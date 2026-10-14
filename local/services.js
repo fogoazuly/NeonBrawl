@@ -5,6 +5,26 @@
   if (!config) throw new Error('Abra o jogo pelo servidor local.');
   const read = (key, fallback) => { try { return JSON.parse(localStorage.getItem(key)) ?? fallback; } catch { return fallback; } };
   const write = (key, value) => localStorage.setItem(key, JSON.stringify(value));
+  // Bounded local diagnostics survive F5; never include account/session data.
+  const diagnosticsKey='nbRuntimeDiagnostics';
+  const previous=read(diagnosticsKey,[]);
+  const records=Array.isArray(previous)?previous.slice(-10):[];
+  window.NeonBrawlDiagnostics={
+    record(kind,detail={}){
+      records.push({time:new Date().toISOString(),kind,...detail});
+      if(records.length>10)records.shift();
+      try{write(diagnosticsKey,records);}catch{}
+    },
+    download(){
+      const blob=new Blob([JSON.stringify({browser:navigator.userAgent,records},null,2)],{type:'application/json'});
+      const url=URL.createObjectURL(blob),a=document.createElement('a');
+      a.href=url;a.download='neonbrawl-diagnostico.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+    }
+  };
+  window.addEventListener('error',event=>{
+    if(!event.filename?.includes('/local/'))return;
+    window.NeonBrawlDiagnostics.record('javascript',{file:new URL(event.filename).pathname,line:event.lineno,column:event.colno,error:event.error?.name||'Error'});
+  });
   window.NeonBrawlServices = {
     async getPeerConfig() {
       if (config.multiplayer === false) throw new Error('Multiplayer ainda indisponível nesta versão online.');
@@ -15,7 +35,7 @@
   // Legacy wallet/cloud hooks stay disabled: authentication alone must not change local saves.
   // The new account session lives in NeonBrawlAuth, separately from the original portal economy.
   window.PixoSupabase = { getState: () => ({ ready: true, enabled: false, user: null }), onChange(fn) { fn(this.getState()); return () => {}; } };
-  window.PixoPlayerCard = { localName: slot => read('nbLocalName', '') || `Player ${slot + 1}`, localUserId: () => null,
+  window.PixoPlayerCard = { localName: slot => window.NeonBrawlAuth?.getState().user?.user_metadata?.display_name || read('nbLocalName', '') || `Player ${slot + 1}`, localUserId: () => null,
     markSelf() {}, attachClickable() {} };
   window.PixoTurn = { getIceServers: async () => config.iceServers };
 
@@ -70,7 +90,7 @@
     const workerUrl = URL.createObjectURL(new Blob([`setInterval(() => postMessage(0), ${Number(tickMs)});`], { type: 'text/javascript' }));
     const worker = new Worker(workerUrl); URL.revokeObjectURL(workerUrl);
     worker.onmessage = () => { if (active && document.hidden) onTick(performance.now()); };
-    const loop = now => { if (!active) return; if (!document.hidden) onTick(now); frame = requestAnimationFrame(loop); };
+    const loop = now => { if (!active) return; frame = requestAnimationFrame(loop); if (!document.hidden) onTick(now); };
     return { start() { if (!active) { active = true; frame = requestAnimationFrame(loop); } }, stop() { active = false; cancelAnimationFrame(frame); worker.terminate(); } };
   } };
 })();

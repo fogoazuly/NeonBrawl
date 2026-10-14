@@ -75,13 +75,30 @@ const orbLights = !GFX_ORB_LIGHTS ? null : (()=>{
 })();
 
 
+// Three.js restores GPU resources on context restoration. Suspend simulation while
+// they are unavailable, so a solo player cannot die behind a black canvas.
+let contextLost = false;
+const graphicsNotice = document.createElement('div');
+graphicsNotice.setAttribute('role','status');
+graphicsNotice.style.cssText='position:fixed;inset:40% 10% auto;z-index:100000;padding:24px;background:#101827;color:white;text-align:center;font:18px system-ui;border:1px solid #7af5d9';
+graphicsNotice.textContent='O navegador interrompeu os gráficos. Aguardando recuperação…';
+graphicsNotice.hidden=true;
+document.body.append(graphicsNotice);
+function lost(event){event.preventDefault();contextLost=true;graphicsNotice.hidden=false;console.warn('NeonBrawl: WebGL context lost');window.NeonBrawlDiagnostics?.record('webgl-lost');}
+function restored(){window.NeonBrawlDiagnostics?.record('webgl-restored');contextLost=false;resize();graphicsNotice.hidden=true;}
+canvas.addEventListener('webglcontextlost',lost);
+canvas.addEventListener('webglcontextrestored',restored);
 window.addEventListener('resize', resize);
 return {
   scene, camera, playerGlow, muzzleLight, orbLights,
-  render() { if(composer) composer.render(); else renderer.render(scene, camera); },
+  get contextLost() { return contextLost; },
+  render() { if(contextLost || document.hidden) return; if(composer) composer.render(); else renderer.render(scene, camera); },
   resize,
   dispose() {
     window.removeEventListener('resize', resize);
+    canvas.removeEventListener('webglcontextlost',lost);
+    canvas.removeEventListener('webglcontextrestored',restored);
+    graphicsNotice.remove();
     if(composer) {
       for(const pass of composer.passes) pass.dispose?.();
       composer.dispose();

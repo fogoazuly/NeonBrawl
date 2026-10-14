@@ -10,6 +10,7 @@ gameTest.ascFixture=()=>{
   spawnEnemy('tank',-10,-10);const e=enemies[enemies.length-1];e.hp=e.maxHp=100000;e.spd=0;e.spawnAnim=0;
   applySkill('gravityAscension');
 };
+gameTest.ascSpread=n=>{playerSkills.spread=n;};
 gameTest.ascHold=seconds=>{for(let t=0;t<seconds-1e-8;t+=.05)updateGravityAscension(Math.min(.05,seconds-t),true);return gameTest.ascState();};
 gameTest.ascRelease=()=>{updateGravityAscension(.01,false);return gameTest.ascState();};
 gameTest.ascState=()=>({charge:player.gravityCharge,exhaustion:player.gravityExhaustion,ammo:player.ammo,reload:currentReloadTime(),bullets:bulletPool.filter(b=>b.active&&b.bulletKind==='gravity').map(b=>({damage:b.dmg,radius:b.gravityRadius,global:b.gravityGlobal,life:b.life,explode:b.explodeR})),hud:gravityChargeHud?.textContent});
@@ -77,6 +78,17 @@ gameTest.ascNetState=()=>bulletPool.filter(b=>b.active&&b.bulletKind==='gravity'
     const real=await p.evaluate(()=>gameTest.ascActualInput());assert.equal(real.held.bullets.length,0);assert.equal(real.released.bullets.length,1);assert.equal(real.released.exhaustion,0);
     const upgrades=await p.evaluate(()=>gameTest.ascUpgrades());assert.ok(Math.abs(upgrades.radius-8.1)<.001);assert.ok(Math.abs(upgrades.life-4.2)<.001);assert.equal(upgrades.damage,180);
     for(const kind of ['pause','blur','death','switch','reward','newRun']){const state=await p.evaluate(k=>gameTest.ascCancelCase(k),kind);assert.equal(state.charge,0,kind);assert.equal(state.bullets.length,0,kind);assert.equal(state.exhaustion,0,kind);}
+    for(const level of [1,5])for(const seconds of [6,12]){
+      await p.evaluate(n=>{gameTest.ascFixture();gameTest.ascSpread(n);},level);
+      await p.evaluate(t=>gameTest.ascHold(t),seconds);
+      const state=await p.evaluate(()=>gameTest.ascRelease());
+      assert.equal(state.bullets.length,1+level);
+      assert.equal(state.ammo,2);
+      assert.equal(state.exhaustion,seconds===12?10:0);
+      assert.ok(state.bullets.every(b=>b.global===(seconds===12)));
+      assert.ok(state.bullets.slice(1).every(b=>Math.abs(b.damage/state.bullets[0].damage-.45)<.02));
+    }
+    console.log('PASS charged spread at levels 1/5, partial/full, single ammo and fatigue');
     console.log('PASS partial/full charge, global damage, no repeat, recovery, movement, cancellation, real update and capped upgrades');
     await p.evaluate(()=>gameTest.ascCardPreview());await p.screenshot({path:'test-results/divine-cards.png',animations:'disabled'});
     await p.evaluate(()=>gameTest.ascHudPreview());await p.screenshot({path:'test-results/divine-charge.png',animations:'disabled'});

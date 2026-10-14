@@ -9,6 +9,11 @@ panel.innerHTML = `
   <h2 id="nbAuthTitle">Sua conta</h2>
   <p id="nbAuthIdentity"></p>
   <p class="nb-auth-note">Seu progresso continua salvo neste navegador. Entrar ou sair não transfere nem apaga seu progresso.</p>
+  <form id="nbAuthNameForm" hidden>
+    <label>Nome do jogador<input id="nbAuthName" autocomplete="nickname" minlength="2" maxlength="14" required aria-describedby="nbAuthNameHint"></label>
+    <p id="nbAuthNameHint" class="nb-auth-note">De 2 a 14 caracteres: letras, números, espaços, _ ou -. Este nome aparece no jogo e pode ser alterado aqui.</p>
+    <button type="submit">Salvar nome</button>
+  </form>
   <form id="nbAuthForm">
     <label id="nbAuthEmailLabel">E-mail<input id="nbAuthEmail" type="email" autocomplete="email" maxlength="254" required></label>
     <label id="nbAuthPasswordLabel">Senha<input id="nbAuthPassword" type="password" autocomplete="current-password" required></label>
@@ -22,6 +27,7 @@ panel.innerHTML = `
   </div>
   <button id="nbAuthSignOut" type="button" hidden>Sair da conta neste navegador</button>
   <p id="nbAuthMessage" role="status" aria-live="polite"></p>
+  <button id="nbAuthDiagnostics" type="button">Baixar diagnóstico de travamento</button>
   <button id="nbAuthGuest" type="button">Continuar jogando</button>`;
 document.body.append(panel);
 const el = id => document.getElementById(`nbAuth${id}`);
@@ -56,6 +62,7 @@ function render() {
   el('Toggle').hidden = signedIn || unavailable || mode === 'reset';
   el('Forgot').hidden = signedIn || unavailable || mode !== 'login';
   el('SignOut').hidden = !signedIn;
+  el('NameForm').hidden = !signedIn;
   el('EmailLabel').hidden = mode === 'reset';
   el('Email').required = mode !== 'reset';
   el('PasswordLabel').hidden = mode === 'forgot';
@@ -75,12 +82,14 @@ function clearPasswords() { el('Password').value = ''; el('Confirm').value = '';
 function switchMode(next) { mode = next; clearPasswords(); message(''); render(); }
 function open() {
   if (!panel.open) panel.showModal();
+  el('Name').value = user?.user_metadata?.display_name || '';
   render();
   if (!config) message('O login ainda não está disponível. Você pode continuar jogando como visitante.');
   else if (!client) message('Não foi possível iniciar o login. Recarregue a página para tentar novamente.', true);
   else if (!ready) message('Conectando à sua conta…');
 }
 accountButton.onclick = open;
+el('Diagnostics').onclick = () => window.NeonBrawlDiagnostics?.download();
 el('Close').onclick = el('Guest').onclick = () => panel.close();
 panel.addEventListener('close', clearPasswords);
 el('Toggle').onclick = () => switchMode(mode === 'login' ? 'signup' : 'login');
@@ -141,6 +150,19 @@ el('Form').onsubmit = event => {
     }
   });
 };
+el('NameForm').onsubmit = event => {
+  event.preventDefault();
+  const name = el('Name').value.normalize('NFC').trim().replace(/\s+/g, ' ');
+  if (!/^[\p{L}\p{N} _-]{2,14}$/u.test(name)) {
+    message('Use de 2 a 14 caracteres: letras, números, espaços, _ ou -.', true); return;
+  }
+  void perform(async () => {
+    const data = checked(await client.auth.updateUser({ data: { display_name: name } }));
+    user = data.user; notify();
+    el('Name').value = name;
+    message('Nome salvo! Ele será usado nas suas partidas.');
+  });
+};
 el('Google').onclick = () => void perform(async () => {
   checked(await client.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: redirectTo() } }));
 });
@@ -161,6 +183,7 @@ async function initialize() {
       user = session?.user || null;
       if (event === 'PASSWORD_RECOVERY') { recovery = true; mode = 'reset'; }
       if (event === 'SIGNED_OUT') { recovery = false; mode = 'login'; }
+      el('Name').value = user?.user_metadata?.display_name || '';
       notify();
       if (event === 'PASSWORD_RECOVERY') open();
     });

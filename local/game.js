@@ -4798,6 +4798,17 @@ function tickGravityBullet(b,dt){
 const GRAVITY_CHARGE_SECONDS=12;
 let gravityChargeHud=null,gravityChargePreview=null;
 function cancelGravityCharge(){player.gravityCharge=0;player.gravityChargeLatch=false;if(gravityChargePreview)gravityChargePreview.visible=false;}
+function fireSpreadShots(gun,fx,fz,pdmg,pierceLvl,extra={}){
+  const angles=[.22,.38,.52,.64,.74];
+  for(let i=0;i<Math.min(5,playerSkills.spread||0);i++){
+    const a=angles[i]*(i%2===0?1:-1),c=Math.cos(a),s=Math.sin(a);
+    const dx=fx*c-fz*s,dz=fx*s+fz*c;
+    const dmg=Math.max(1,Math.round(pdmg*.45));
+    const opts=gun.kind==='gravity'?{gravityTravel:gravityAimTravel(gun,player.pos.x,player.pos.z),...extra}:gun.kind==='grenade'?{grenadeTravel:grenadeAimTravel(gun,player.pos.x,player.pos.z)}:null;
+    const b=fireBullet(player.pos,_scratchDir.set(dx,0,dz),true,dmg,pierceLvl,false,null,mp.myId,null,opts);
+    if(b)sendFireMP(player.pos.x,player.pos.z,dx,dz,dmg,pierceLvl,opts);
+  }
+}
 function updateGravityAscension(dt,wantFire,cooldownMult=1){
   const enabled=player.gun==='gravity'&&playerSkills.gravityAscension;
   if(!enabled||player.dead||gState!=='playing'||waveClear||waveTransition){cancelGravityCharge();return !!enabled;}
@@ -4813,6 +4824,7 @@ function updateGravityAscension(dt,wantFire,cooldownMult=1){
     const dmg=Math.max(1,Math.round(playerStats.attackDmg*BULLET_PWR_MULT[playerSkills.bulletPower||0]*crystalPowerMult()*gun.dmgMult));
     const b=fireBullet({x,z},_scratchDir.set(d.x,0,d.z),true,dmg,0,false,null,mp.myId,'gravity',opts);
     if(!b){cancelGravityCharge();return true;}
+    fireSpreadShots(gun,d.x,d.z,dmg,0,{gravityCharge:charge});
     if(full)player.gravityExhaustion=10;
     if(!hasRelic('infiniteMag')){player.ammo--;if(player.ammo<=0){player.reloadDur=currentReloadTime();player.reloadT=player.reloadDur;sReloadStart();}}
     player.fireCd=gun.fireCd*cooldownMult*(player.gravityExhaustion>0?1.5:1);
@@ -8473,7 +8485,7 @@ function showReconnectToast(msg){ const el=document.getElementById('reconnectToa
 
 function defaultPlayerName(id){ return `P${(+id||0)+1}`; }
 function cleanPlayerName(name,id=mp.myId){
-  const s=String(name||'').replace(/[<>]/g,'').trim().slice(0,14);
+  const s=String(name||'').replace(/[^\p{L}\p{N} _-]/gu,'').trim().slice(0,14);
   return s || defaultPlayerName(id);
 }
 function getLocalPlayerName(){
@@ -16214,31 +16226,7 @@ function update(dt){
         // Muzzle puff scaled by pellet count so shotguns visibly punch harder.
         if(!isMobile) spawnShockwave(player.pos.x+fx*0.85,player.pos.z+fz*0.85,
           gun.bulletsPerShot>1?0.95:0.65, gun.color, 0.16, gun.bulletsPerShot>1?0.78:0.6);
-        // Spread shot skill
-        const spreadLvl=playerSkills.spread||0;
-        if(spreadLvl>0){
-          const spreadAngs=[0.22,0.38,0.52,0.64,0.74];
-          for(let si=0;si<spreadLvl;si++){
-            const angOff=spreadAngs[Math.min(si,4)];
-            const sign=(si%2===0)?1:-1;
-            const ca=Math.cos(sign*angOff),sa=Math.sin(sign*angOff);
-            const sdx=fx*ca-fz*sa, sdz=fx*sa+fz*ca;
-            // Spread side-bullets do 45% of primary damage (was 60%) so stacking
-            // spread + bulletPower doesn't snowball into the dominant build.
-            const sdmg=Math.max(1,Math.round(pdmg*0.45));
-            const spreadOpts=gun.kind==='gravity' ? {gravityTravel:gravityAimTravel(gun,player.pos.x,player.pos.z)} : gun.kind==='grenade' ? {grenadeTravel:grenadeAimTravel(gun,player.pos.x,player.pos.z)} : null;
-            fireBullet({x:player.pos.x,z:player.pos.z},_scratchDir.set(sdx,0,sdz),true,sdmg,pierceLvl,false,null,mp.myId,null,spreadOpts);
-            sendFireMP(
-              Math.round(player.pos.x*100)/100,
-              Math.round(player.pos.z*100)/100,
-              Math.round(sdx*1000)/1000,
-              Math.round(sdz*1000)/1000,
-              sdmg,
-              pierceLvl,
-              spreadOpts
-            );
-          }
-        }
+        fireSpreadShots(gun,fx,fz,pdmg,pierceLvl);
         }
         tickShotCounterEpics(fx,fz,pdmg,pierceLvl);
         noteWaveEventGunFire();
@@ -17887,6 +17875,7 @@ addEventListener('resize',()=>{_canvasRect=null;});
 addEventListener('scroll',()=>{_canvasRect=null;},{passive:true});
 addEventListener('orientationchange',()=>{_canvasRect=null;});
 function loop(now){
+  if(sceneView.contextLost && mp.soloMode){lastNow=now;resetGameplayInput();return;}
   resetFrameVfxBudget();
   if(!_canvasRect)refreshCanvasRect();
   const rdt=Math.min((now-lastNow)/1000, 0.05); lastNow=now;

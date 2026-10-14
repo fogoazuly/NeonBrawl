@@ -33,12 +33,16 @@ test('servidor fornece jogo e bibliotecas locais sem expor fontes privadas', asy
 test('adaptador usa origem da página, HTTPS e ranking persistente', async () => {
   const storage = new Map();
   const context = vm.createContext({
-    window: { NEONBRAWL_CONFIG: { peerPath: '/peerjs', iceServers: [] } },
+    window: { addEventListener() {}, NEONBRAWL_CONFIG: { peerPath: '/peerjs', iceServers: [] } },
     location: { hostname: 'example.test', port: '', protocol: 'https:' },
     localStorage: { getItem: key => storage.get(key) ?? null, setItem: (key, value) => storage.set(key, value) },
   });
   const source = await readFile('local/services.js', 'utf8');
   vm.runInContext(source, context);
+  for(let i=0;i<12;i++)context.window.NeonBrawlDiagnostics.record('test',{line:i});
+  const logs=JSON.parse(storage.get('nbRuntimeDiagnostics'));
+  assert.equal(logs.length,10);
+  assert.equal(logs[0].line,2);
   const config = await context.window.NeonBrawlServices.getPeerConfig();
   assert.equal(config.host, 'example.test');
   assert.equal(config.port, 443);

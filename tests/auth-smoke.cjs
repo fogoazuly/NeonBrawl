@@ -38,7 +38,7 @@ const fs = require('node:fs/promises');
       if (url.pathname.endsWith('/token')) {
         if (body.password === 'wrong-password') { status = 400; result = { code: 'invalid_credentials', msg: 'Invalid login credentials' }; }
         else result = session;
-      } else if (url.pathname.endsWith('/user')) result = user;
+      } else if (url.pathname.endsWith('/user')) { if(body?.data) user.user_metadata={...user.user_metadata,...body.data}; result = user; }
       else if (url.pathname.endsWith('/signup')) result = user;
       else if (url.pathname.endsWith('/logout')) status = 204;
       else if (url.pathname.endsWith('/authorize')) {
@@ -59,9 +59,18 @@ const fs = require('node:fs/promises');
     await page.locator('#nbAuthSubmit').click();
     await page.waitForFunction(() => window.NeonBrawlAuth.getState().user?.email === 'pilot@example.test');
     assert.equal(await page.locator('#nbAuthIdentity').innerText(), user.email);
+    await page.locator('#nbAuthName').fill('<invalid>');
+    await page.locator('#nbAuthNameForm button').click();
+    assert.match(await page.locator('#nbAuthMessage').innerText(), /Use de 2 a 14/);
+    await page.locator('#nbAuthName').fill('Piloto Azul');
+    await page.locator('#nbAuthNameForm button').click();
+    await page.waitForFunction(() => window.PixoPlayerCard.localName(0) === 'Piloto Azul');
+    assert(requests.some(req => req.method === 'PUT' && req.body.data?.display_name === 'Piloto Azul'));
+    await page.screenshot({path:'test-results/player-name.png'});
     await page.reload();
     await page.waitForFunction(() => window.NeonBrawlAuth?.getState().user?.email === 'pilot@example.test');
     assert.equal(await page.evaluate(() => window.PixoSupabase.getState().enabled), false);
+    assert.equal(await page.evaluate(() => window.PixoPlayerCard.localName(0)), 'Piloto Azul');
     await page.locator('#nbAccountBtn').click();
     await page.locator('#nbAuthSignOut').click();
     await page.waitForFunction(() => !window.NeonBrawlAuth.getState().user);
