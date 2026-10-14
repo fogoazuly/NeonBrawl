@@ -10,13 +10,22 @@ gameTest.ascFixture=()=>{
   spawnEnemy('tank',-10,-10);const e=enemies[enemies.length-1];e.hp=e.maxHp=100000;e.spd=0;e.spawnAnim=0;
   applySkill('gravityAscension');
 };
+gameTest.ascCenterTest=(visual=false)=>{
+ gameTest.ascFixture();const e=enemies.find(e=>!e.dead);e.pos.set(-12,0,0);e.type='boss';
+ obstacleBoxes.push({x:6,z:0,hw:2,hd:10},{x:-6,z:0,hw:2,hd:10});
+ const b=fireBullet({x:12,z:0},new THREE.Vector3(1,0,0),true,100,0,visual,null,mp.myId,'gravity',{gravityCharge:1});
+ tickGravityBullet(b,.1);
+ const transit={x:b.pos.x,enemyX:e.pos.x,life:b.life};
+ for(let i=0;i<140;i++)tickGravityBullet(b,.02);
+ return {transit,x:b.pos.x,z:b.pos.z,enemyX:e.pos.x,life:b.life,active:b.active};
+};
 gameTest.ascSpread=n=>{playerSkills.spread=n;};
 gameTest.ascHold=seconds=>{for(let t=0;t<seconds-1e-8;t+=.05)updateGravityAscension(Math.min(.05,seconds-t),true);return gameTest.ascState();};
 gameTest.ascRelease=()=>{updateGravityAscension(.01,false);return gameTest.ascState();};
 gameTest.ascState=()=>({charge:player.gravityCharge,exhaustion:player.gravityExhaustion,ammo:player.ammo,reload:currentReloadTime(),bullets:bulletPool.filter(b=>b.active&&b.bulletKind==='gravity').map(b=>({damage:b.dmg,radius:b.gravityRadius,global:b.gravityGlobal,life:b.life,explode:b.explodeR})),hud:gravityChargeHud?.textContent});
 gameTest.ascResetInput=()=>{resetGameplayInput();updateGravityAscension(.01,false);return gameTest.ascState();};
 gameTest.ascTick=seconds=>{mouse.down=false;for(let t=0;t<seconds;t+=.05)update(.05);return gameTest.ascState();};
-gameTest.ascGlobalDamage=()=>{const e=enemies.find(e=>!e.dead);const before=e.hp;const b=bulletPool.find(b=>b.active&&b.gravityGlobal);b.life=.01;tickGravityBullet(b,.02);return before-e.hp;};
+gameTest.ascGlobalDamage=()=>{const e=enemies.find(e=>!e.dead);const before=e.hp;const b=bulletPool.find(b=>b.active&&b.gravityGlobal);while(b.gravityTravelling)tickGravityBullet(b,.05);b.life=.01;tickGravityBullet(b,.02);return before-e.hp;};
 gameTest.ascMotion=exhausted=>{player.gravityExhaustion=exhausted?10:0;player.pos.set(0,0,0);keys.ArrowRight=true;update(.1);delete keys.ArrowRight;return player.pos.x;};
 gameTest.ascOffers=gun=>{
   player.gun=gun;delete playerSkills.gravityAscension;delete playerSkillPicks.gravityAscension;
@@ -88,6 +97,15 @@ gameTest.ascNetState=()=>bulletPool.filter(b=>b.active&&b.bulletKind==='gravity'
       assert.ok(state.bullets.every(b=>b.global===(seconds===12)));
       assert.ok(state.bullets.slice(1).every(b=>Math.abs(b.damage/state.bullets[0].damage-.45)<.02));
     }
+    for(const visual of [false,true]){
+      const state=await p.evaluate(v=>gameTest.ascCenterTest(v),visual);
+      assert.ok(state.transit.x>0&&state.transit.x<12);
+      assert.equal(state.transit.enemyX,-12);assert.equal(state.transit.life,5);
+      assert.equal(state.x,0);assert.equal(state.z,0);assert.ok(state.active);
+      assert.ok(state.life>2);
+      if(visual)assert.equal(state.enemyX,-12);else assert.ok(Math.abs(state.enemyX)<.1);
+    }
+    console.log('PASS center travel through walls, deferred lifetime/pull, boss attraction through walls, replica authority');
     console.log('PASS charged spread at levels 1/5, partial/full, single ammo and fatigue');
     console.log('PASS partial/full charge, global damage, no repeat, recovery, movement, cancellation, real update and capped upgrades');
     await p.evaluate(()=>gameTest.ascCardPreview());await p.screenshot({path:'test-results/divine-cards.png',animations:'disabled'});

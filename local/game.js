@@ -4687,6 +4687,7 @@ function fireBullet(pos, dir, isPlayer, dmg, pierce=0, visualOnly=false, ownerPe
       const gp=ownerPerm||{};
       const charge=gp.gravityDivine?Math.max(0,Math.min(1,Number(bulletOpts?.gravityCharge)||0)):0;
       slot.gravityGlobal=charge>=1;
+      slot.gravityTravelling=slot.gravityGlobal;
       slot.gravityRadius=gunCfg.pullRadius*(1+.2*Math.max(0,Math.min(4,gp.gravityRadius||0)))*(1+1.5*charge);
       slot.gravityCollapse=Math.max(0,Math.min(3,gp.gravityCollapse||0));
       slot.life+=.6*Math.max(0,Math.min(3,gp.gravityPersistence||0));
@@ -4694,9 +4695,9 @@ function fireBullet(pos, dir, isPlayer, dmg, pierce=0, visualOnly=false, ownerPe
       slot.explodeR*=1+1.5*charge;
       if(slot.gravityGlobal){
         slot.body.material=BULLET_STYLES.gravity.blackMat;
-        spawnShockwave(slot.pos.x,slot.pos.z,Math.max(ARENA_W,ARENA_H)*2,0xe3baff,.8,.22);
+        // The global field activates only after the projectile reaches arena center.
         slot.gravityRadius=Math.hypot(ARENA_W*2,ARENA_H*2)+2;slot.explodeR=slot.gravityRadius;
-        slot.life=5+.6*Math.max(0,Math.min(3,gp.gravityPersistence||0));slot.spd=0;
+        slot.life=5+.6*Math.max(0,Math.min(3,gp.gravityPersistence||0));slot.spd=18;
       }
       slot.mesh.scale.multiplyScalar(slot.gravityGlobal?3:1+charge);
       if(!slot.gravityRing){
@@ -4761,9 +4762,23 @@ function releaseBullet(slot){
 // only render the field; the host moves enemies and applies the explosion.
 function tickGravityBullet(b,dt){
   const cfg=GUNS.gravity;
+  if(b.gravityGlobal){
+    const distance=Math.hypot(b.pos.x,b.pos.z);
+    const step=Math.min(distance,18*dt);
+    if(distance>0){b.pos.x*=1-step/distance;b.pos.z*=1-step/distance;}
+    b.mesh.position.set(b.pos.x,0.65,b.pos.z);
+    b.mesh.rotation.y+=dt*3;
+    if(b.gravityRing){b.gravityRing.visible=true;b.gravityRing.position.set(b.pos.x,.08,b.pos.z);}
+    // Travel ignores walls and does not consume the field's active lifetime.
+    if(distance>step)return;
+    if(b.gravityTravelling){
+      b.gravityTravelling=false;b.spd=0;
+      spawnShockwave(0,0,Math.max(ARENA_W,ARENA_H)*2,0xe3baff,.8,.22);
+    }
+  }
   const distance=Math.min(b.spd*dt,Math.max(0,b.maxRange-b.travelDist));
   const steps=Math.max(1,Math.ceil(distance/0.15));
-  for(let i=0;i<steps;i++){
+  for(let i=0;!b.gravityGlobal&&i<steps;i++){
     const x=b.pos.x+b.dir.x*distance/steps,z=b.pos.z+b.dir.z*distance/steps;
     if(Math.abs(x)>ARENA_W-b.hitR||Math.abs(z)>ARENA_H-b.hitR||isBlockedAt(x,z,b.hitR)){b.spd=0;break;}
     b.pos.x=x;b.pos.z=z;b.travelDist+=distance/steps;
@@ -4776,11 +4791,12 @@ function tickGravityBullet(b,dt){
       if(e.dead)continue;
       const dx=b.pos.x-e.pos.x,dz=b.pos.z-e.pos.z,d=Math.hypot(dx,dz);
       if(d<0.1||d>(b.gravityRadius||cfg.pullRadius))continue;
-      // Walls also block the field, so enemies are never dragged through them.
+      // Partial charges respect walls; the divine global field pulls through them.
       if(!b.gravityGlobal&&obstacleBoxes.some(o=>rayAabbT(e.pos.x,e.pos.z,dx/d,dz/d,o,0.05)<d))continue;
-      const step=Math.min(d,dt*cfg.pullSpeed*(e.type==='boss'?cfg.bossPullMult:1));
+      const speed=b.gravityGlobal?Math.hypot(ARENA_W,ARENA_H)/2:cfg.pullSpeed*(e.type==='boss'?cfg.bossPullMult:1);
+      const step=Math.min(d,dt*speed);
       const x=e.pos.x+dx/d*step,z=e.pos.z+dz/d*step;
-      if(Math.abs(x)>ARENA_W-e.cfg.r||Math.abs(z)>ARENA_H-e.cfg.r||isBlockedAt(x,z,e.cfg.r))continue;
+      if(Math.abs(x)>ARENA_W-e.cfg.r||Math.abs(z)>ARENA_H-e.cfg.r||(!b.gravityGlobal&&isBlockedAt(x,z,e.cfg.r)))continue;
       e.pos.x=x;e.pos.z=z;e.mesh.position.x=x;e.mesh.position.z=z;
     }
   }
@@ -6430,7 +6446,7 @@ const SKILL_DEFS = {
   eventHorizon:{name:'Event Horizon',icon:'🌀',requiresGun:'gravity',desc:['','Gravity Cannon: +20% pull radius','Gravity Cannon: +40% pull radius','','Gravity Cannon: +60% pull radius','Gravity Cannon: +80% pull radius']},
   unstableCollapse:{name:'Unstable Collapse',icon:'💥',requiresGun:'gravity',desc:['','Gravity Cannon: +8% explosion damage per enemy in the field (max +40%)','','Gravity Cannon: +12% per enemy (max +60%)','','Gravity Cannon: +16% per enemy (max +80%)']},
   persistentSingularity:{name:'Persistent Singularity',icon:'🌌',requiresGun:'gravity',desc:['','Gravity Cannon: field lasts +0.6s','','Gravity Cannon: field lasts +1.2s','','Gravity Cannon: field lasts +1.8s']},
-  gravityAscension:{name:'Absolute Singularity',icon:'🕳️',requiresGun:'gravity',desc:['','','','','','Hold attack: up to 4× damage and 2.5× radius. At 12s, auto-release a global black hole (10× damage). Then 10s: -35% movement, +50% firing interval and reload time; charging disabled. Early release has no penalty.']},
+  gravityAscension:{name:'Absolute Singularity',icon:'🕳️',requiresGun:'gravity',desc:['','','','','','Hold attack: up to 4× damage and 2.5× radius. At 12s, launch a black hole to arena center (10× damage), pulling all enemies through walls, including bosses. Then 10s: -35% movement, +50% firing interval and reload time; charging disabled. Early release has no penalty.']},
   spread:    { name:'Spread Pattern',  icon:'↔️', desc:['','+1 side pattern / wider cones','+2 side patterns (pierce fades)','+3 side patterns / wider beams','+4 side patterns','+5 side patterns'] },
   rapidFire: { name:'Rapid Fire',      icon:'⚡', desc:['','15% faster','28% faster','40% faster','50% faster','60% faster'] },
   fireball:  { name:'Fireball Orb',    icon:'🔥', desc:['','1 orbiting fireball','2 orbiting fireballs','3 orbiting fireballs','4 orbiting fireballs','4 fireballs, 2× speed'] },
