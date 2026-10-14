@@ -68,7 +68,7 @@ Os MP3/WAV originais e `assets/card-icons.png` não estavam na pasta. Usamos os 
 
 ## Pontuação local
 
-O ranking local registra a pontuação ao morrer ou encerrar a partida: saída pelo menu, recarga, fechamento normal da aba e desconexão. Esses caminhos não duplicam o registro da mesma partida, e partidas sem pontos não criam entradas. No cooperativo, cada participante salva no próprio navegador a pontuação compartilhada da equipe. O progresso e o ranking continuam locais; o fechamento forçado do processo do navegador pode impedir a execução do salvamento.
+O ranking local registra a pontuação ao morrer ou encerrar a partida: saída pelo menu, recarga, fechamento normal da aba e desconexão. Esses caminhos não duplicam o registro da mesma partida, e partidas sem pontos não criam entradas. No cooperativo, cada participante salva no próprio navegador a pontuação compartilhada da equipe. O ranking continua local; o progresso de contas conectadas é sincronizado com o Supabase; o fechamento forçado do processo do navegador pode impedir a execução do salvamento.
 
 ## Backup do progresso
 
@@ -92,7 +92,7 @@ O repositório preparado é `fogoazuly/NeonBrawl`. A URL prevista é `https://fo
 - Em Settings → Secrets and variables → Actions → Variables, configure `SUPABASE_URL=https://xhjcfcunsykgjonkzfqc.supabase.co` e `SUPABASE_PUBLISHABLE_KEY` com a chave pública do projeto. Não use uma chave secret/service_role.
 - No Supabase, configure o Site URL como `https://fogoazuly.github.io/NeonBrawl/` e permita esse retorno e seus parâmetros PKCE na lista Redirect URLs (`https://fogoazuly.github.io/NeonBrawl/**`). Preserve os retornos locais se continuar testando no PC.
 - A primeira versão Pages oferece solo e login quando configurado. O botão multiplayer informa que as salas online estão em preparação; o PeerServer local continua funcionando ao iniciar pelo Node.
-- O progresso local do endereço `127.0.0.1` não aparece automaticamente no domínio do GitHub. Use o backup do jogo para transferi-lo.
+- Entre na mesma conta para carregar o progresso salvo no Supabase em ambos os endereços. O progresso de visitante ainda é separado por endereço; use o backup para transferi-lo.
 - Verificação antes de publicar: `npm run build:pages` e `node tests/pages-smoke.cjs`. O teste inicia/encerra seu próprio servidor e verifica solo, recursos, isolamento dos arquivos privados e retorno OAuth em `/NeonBrawl/`.
 
 ### Servidor Node.js
@@ -116,3 +116,9 @@ Para repetir o teste de navegador: mantenha o servidor na porta 3000 e execute `
 `node tests/rooms-smoke.cjs` verifica código inválido, saída/reentrada de convidados, reutilização da vaga, saída do anfitrião, criação de nova sala e reconexão de um canal WebRTC interrompido. Usa o mesmo servidor local e perfil temporário dos demais testes de navegador.
 
 A auditoria de mecânicas está registrada em `tests/MATRIZ-MECANICAS.md`, com resultados em `tests/VALIDACAO.md`. Os testes adicionais cobrem pontuação nas saídas, catálogo, combate, inimigos, jogador, objetivos e loja; a matriz distingue verificações concluídas de efeitos e fluxos ainda pendentes.
+
+## Progresso na conta
+
+O jogo salva automaticamente ouro, chaves, melhorias e armas na conta conectada. O menu informa se o envio está concluído ou pendente. No primeiro login, uma conta sem save recebe o progresso de visitante deste navegador; outras contas mantêm cópias separadas. A run em andamento não é salva. Se dois dispositivos alterarem versões diferentes, escolha qual manter em **Minha conta**.
+
+Detalhes de sincronização, política de conflitos, schema e testes em [tests/CLOUD-SAVES.md](tests/CLOUD-SAVES.md).

@@ -7,6 +7,7 @@ import { createMultiplayerState, MP_PLAYER_SYNC_DT, MP_HOST_SYNC_DT, MP_PING_DT,
 import { createTransport } from './multiplayer/transport.js';
 import { encodeSave, decodeSave } from './save-codec.js';
 import { setupBackupUI } from './backup-ui.js';
+import { setupCloudProgress } from './cloud-progress.js';
 import * as THREE from 'three';
 // Touch-device detection (drives joystick / spell-button UI + touch listeners).
 // Used by the input code so a desktop user opting into low-quality graphics
@@ -227,6 +228,7 @@ function _scheduleCloudSync(){
 }
 function _savePD(){
   localStorage.setItem('_nbpd',encodeSave(persistData));
+  window.NeonBrawlProgress?.save(persistData);
   _scheduleCloudSync();
 }
 function _loadPD(){
@@ -18689,15 +18691,20 @@ document.getElementById('openLeaderboard')?.addEventListener('click', () => {
   }
 });
 
-// Backup is only available outside runs and multiplayer rooms.
+// Backups and account changes are applied only in the menu, outside rooms.
+const progressSchema = {
+  resetId: SAVE_RESET_ID,
+  gunLockResetId: GUN_LOCK_RESET_ID,
+  upgrades: Object.fromEntries(PERM_SHOP_DEFS.map(def => [def.id, def.max || PERM_MAX_LVL])),
+  guns: Object.keys(GUNS), weapons: Object.keys(MELEE_WEAPONS),
+};
+setupCloudProgress({
+  schema: progressSchema, getProgress: () => structuredClone(persistData),
+  defaults: structuredClone(DEFAULT_PERSIST),
+  setProgress: progress => {persistData=structuredClone(progress);updateGoldHud();},
+  canSwitch: () => gState === 'menu' && !mp.connected && document.getElementById('upgradeShop').style.display !== 'flex',
+});
 setupBackupUI({
-  schema: {
-    resetId: SAVE_RESET_ID,
-    gunLockResetId: GUN_LOCK_RESET_ID,
-    upgrades: Object.fromEntries(PERM_SHOP_DEFS.map(def => [def.id, def.max || PERM_MAX_LVL])),
-    guns: Object.keys(GUNS),
-    weapons: Object.keys(MELEE_WEAPONS),
-  },
-  getProgress: () => structuredClone(persistData),
-  canUse: () => gState === 'menu' && !mp.connected,
+  schema: progressSchema, getProgress: () => structuredClone(persistData),
+  canUse: () => gState === 'menu' && !mp.connected && window.NeonBrawlProgress.ready(),
 });

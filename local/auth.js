@@ -1,4 +1,4 @@
-// Authentication only. Game progress remains local and is never replaced on account changes.
+// Authentication is separate from the legacy wallet; account progress uses its own table.
 const config = window.NEONBRAWL_CONFIG?.auth;
 const accountButton = document.getElementById('nbAccountBtn');
 const panel = document.createElement('dialog');
@@ -8,7 +8,7 @@ panel.innerHTML = `
   <button id="nbAuthClose" type="button" aria-label="Fechar">✕</button>
   <h2 id="nbAuthTitle">Sua conta</h2>
   <p id="nbAuthIdentity"></p>
-  <p class="nb-auth-note">Seu progresso continua salvo neste navegador. Entrar ou sair não transfere nem apaga seu progresso.</p>
+  <p class="nb-auth-note">Ouro, melhorias, armas e chaves são salvos na sua conta. Uma cópia permanece neste navegador. A partida em andamento não é salva.</p>
   <form id="nbAuthNameForm" hidden>
     <label>Nome do jogador<input id="nbAuthName" autocomplete="nickname" minlength="2" maxlength="14" required aria-describedby="nbAuthNameHint"></label>
     <p id="nbAuthNameHint" class="nb-auth-note">De 2 a 14 caracteres: letras, números, espaços, _ ou -. Este nome aparece no jogo e pode ser alterado aqui.</p>
@@ -41,6 +41,7 @@ const listeners = new Set();
 const getState = () => ({ ready, enabled: !!client, user });
 window.NeonBrawlAuth = {
   getState,
+  getClient: () => client,
   onChange(fn) { listeners.add(fn); fn(getState()); return () => listeners.delete(fn); }
 };
 function message(text, error = false) {
@@ -169,7 +170,7 @@ el('Google').onclick = () => void perform(async () => {
 el('SignOut').onclick = () => void perform(async () => {
   checked(await client.auth.signOut({ scope: 'local' }));
   recovery = false; mode = 'login';
-  message('Você saiu da conta. Seu progresso local foi mantido.');
+  message('Você saiu da conta. A cópia da conta foi preservada; o progresso de visitante será restaurado no menu.');
 });
 
 async function initialize() {

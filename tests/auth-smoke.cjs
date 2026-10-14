@@ -27,7 +27,7 @@ const fs = require('node:fs/promises');
     console.log('PASS visitor can start a run without Supabase');
 
     await context.route('**/runtime-config.js', route => route.fulfill({ contentType: 'text/javascript', body: `window.NEONBRAWL_CONFIG={peerPath:'/peerjs',iceServers:[],assets:{cardIcons:false,music:false,samples:false},auth:{url:'https://auth.example.test',publishableKey:'sb_publishable_test'}};` }));
-    const requests = [];
+    const requests = []; let progressRow=null;
     const user = { id: '00000000-0000-4000-8000-000000000001', email: 'pilot@example.test', aud: 'authenticated', role: 'authenticated', app_metadata: { provider: 'email' }, user_metadata: {}, created_at: new Date().toISOString() };
     const jwt = [ { alg: 'HS256', typ: 'JWT' }, { sub: user.id, exp: Math.floor(Date.now()/1000)+3600 } ].map(value => Buffer.from(JSON.stringify(value)).toString('base64url')).join('.') + '.c2ln';
     const session = { access_token: jwt, refresh_token: 'test-refresh', expires_in: 3600, token_type: 'bearer', user };
@@ -35,6 +35,11 @@ const fs = require('node:fs/promises');
       const req = route.request(); const url = new URL(req.url());
       const body = req.postDataJSON(); requests.push({ url: req.url(), method: req.method(), body });
       let result = {}; let status = 200;
+      if(url.pathname==='/rest/v1/player_progress'){
+        if(req.method()==='POST')progressRow={...body,revision:1};
+        if(req.method()==='PATCH')progressRow={...progressRow,...body,revision:progressRow.revision+1};
+        await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(progressRow?[progressRow]:[])});return;
+      }
       if (url.pathname.endsWith('/token')) {
         if (body.password === 'wrong-password') { status = 400; result = { code: 'invalid_credentials', msg: 'Invalid login credentials' }; }
         else result = session;
@@ -143,7 +148,7 @@ const fs = require('node:fs/promises');
     assert(bounds.x >= 0 && bounds.x + bounds.width <= 390 && bounds.height <= 844);
     await page.screenshot({ path: 'test-results/auth-mobile.png' });
     assert.equal(await page.evaluate(() => localStorage.getItem('_nbpd')), saveBefore);
-    assert(!requests.some(req => req.url.includes('/rest/') || req.url.includes('/functions/')));
+    assert(!requests.some(req => (req.url.includes('/rest/') && !req.url.includes('/player_progress')) || req.url.includes('/functions/')));
     assert.deepEqual(errors, []);
     console.log('PASS mobile layout, no legacy economy requests and no JavaScript errors');
   } finally { await browser?.close(); server.kill(); }

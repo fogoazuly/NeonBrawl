@@ -73,6 +73,7 @@ export function setupBackupUI({ schema, getProgress, canUse }) {
       if (!canUse()) { status('Volte ao menu e saia da sala antes de importar.'); return; }
       try {
         replaceProgress(localStorage, pending, getProgress(), schema);
+        window.NeonBrawlProgress?.save(pending);
         find('nbApplyImport').disabled = true;
         location.reload();
       } catch { status('Não foi possível salvar. Verifique se há espaço e se o navegador permite armazenamento local. O progresso atual foi mantido.'); }
