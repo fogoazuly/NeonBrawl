@@ -1493,7 +1493,7 @@ const GUNS = {
              kind:'gravity', fireCd:1.6, magSize:3, reloadTime:2.8, dmgMult:3.2, spread:0.02,
              bulletsPerShot:1, bulletSpeed:4, life:2.4, range:7, hitR:0.35, explodeR:3.6, explodeMult:1,
              pullRadius:4.5, pullSpeed:5, bossPullMult:0.18,
-             desc:'Aim a gravity field that pulls, then explodes. Reduced pull on bosses; walls block attraction.' },
+             desc:'Aim a gravity field that slows and pulls, then explodes. Reduced pull on bosses; walls block attraction.' },
   pistol:  { id:'pistol',  name:'PISTOL',  icon:'🔫', css:'#00eeff', color:0x00ffff,
              fireCd:0.36, magSize:15, reloadTime:1.5, dmgMult:1.0, spread:0.05,
              bulletsPerShot:1, range:13,
@@ -4760,6 +4760,18 @@ function releaseBullet(slot){
 
 // Uses the same authoritative projectile path as other guns. Guest replicas
 // only render the field; the host moves enemies and applies the explosion.
+const activeGravityFields=[];
+function gravityFieldForEnemy(e){
+  let local=null;
+  for(const b of activeGravityFields){
+    const dx=b.pos.x-e.pos.x,dz=b.pos.z-e.pos.z,d=Math.hypot(dx,dz);
+    if(d>b.gravityRadius)continue;
+    if(b.gravityGlobal)return b;
+    if(d>.001&&obstacleBoxes.some(o=>rayAabbT(e.pos.x,e.pos.z,dx/d,dz/d,o,.05)<d))continue;
+    local=b;
+  }
+  return local;
+}
 function tickGravityBullet(b,dt){
   const cfg=GUNS.gravity;
   if(b.gravityGlobal){
@@ -4790,7 +4802,7 @@ function tickGravityBullet(b,dt){
     for(const e of enemies){
       if(e.dead)continue;
       const dx=b.pos.x-e.pos.x,dz=b.pos.z-e.pos.z,d=Math.hypot(dx,dz);
-      if(d<0.1||d>(b.gravityRadius||cfg.pullRadius))continue;
+      if(d<0.1||(d>(b.gravityRadius||cfg.pullRadius)&&e.gravitySource!==b))continue;
       // Partial charges respect walls; the divine global field pulls through them.
       if(!b.gravityGlobal&&obstacleBoxes.some(o=>rayAabbT(e.pos.x,e.pos.z,dx/d,dz/d,o,0.05)<d))continue;
       const speed=b.gravityGlobal?Math.hypot(ARENA_W,ARENA_H)/2:cfg.pullSpeed*(e.type==='boss'?cfg.bossPullMult:1);
@@ -16402,8 +16414,11 @@ function update(dt){
     }
 
     buildGrid();
+    activeGravityFields.length=0;
+    for(const b of bulletPool)if(b.active&&b.bulletKind==='gravity'&&!b.visualOnly&&b.delay<=0&&!b.gravityTravelling)activeGravityFields.push(b);
     for(let i=enemies.length-1;i>=0;i--){
       const e=enemies[i]; if(e.dead) continue;
+      e.gravitySource=gravityFieldForEnemy(e);
       const tgt=getEnemyTarget(e.pos.x,e.pos.z);
       if(!tgt){
         e.mesh.position.x=e.pos.x; e.mesh.position.z=e.pos.z;
@@ -16511,6 +16526,10 @@ function update(dt){
       _spd*=hasteAuraMult();
       // Speed Demon challenge — every enemy moves twice as fast for the wave.
       if(waveEvent && waveEvent.type==='challenge' && waveEvent.sub==='speedDemon') _spd*=2;
+      const gravity=e.gravitySource;
+      // Apply after all Hell, dash, rage and challenge speed bonuses.
+      if(gravity)_spd=Math.min(_spd,GUNS.gravity.pullSpeed*(e.type==='boss'?GUNS.gravity.bossPullMult:1)*.5);
+      if(!gravity?.gravityGlobal){
       const steer=openSteer(e.pos,desiredX/ml,desiredZ/ml,e.cfg.r,Math.max(e.cfg.r*0.85,_spd*dt*2.2),e.avoidX,e.avoidZ);
       e.avoidX=steer.x; e.avoidZ=steer.z;
       e.pos.x+=steer.x*_spd*dt;
@@ -16520,6 +16539,7 @@ function update(dt){
       if(isBlockedAt(e.pos.x,e.pos.z,e.cfg.r)) projectToNearestOpen(e.pos,e.cfg.r,Math.max(2.5,e.cfg.r*2.5));
 
       // Stuck escape: if barely moved in 0.45s, nudge perpendicular to flow
+      if(gravity){e.stuckCheck=.45;e.prevX=e.pos.x;e.prevZ=e.pos.z;}
       e.stuckCheck-=dt;
       if(e.stuckCheck<=0){
         e.stuckCheck=0.45;
@@ -16542,6 +16562,7 @@ function update(dt){
         e.prevX=e.pos.x; e.prevZ=e.pos.z;
       }
 
+      } // Global singularities own movement, including passage through walls.
       const moveAmt=Math.hypot(e.pos.x-e.mesh.position.x,e.pos.z-e.mesh.position.z);
       e.mesh.position.x=e.pos.x; e.mesh.position.z=e.pos.z;
       e.mesh.position.y=0.55+Math.sin(now*0.005+i)*0.05;
@@ -16589,7 +16610,7 @@ function update(dt){
           let cd=3.4+Math.random()*1.4;
           switch(e.type){
             case 'chaser': // Lunge: leap toward the player
-              if(dist>1.6&&dist<11){ const L=Math.min(4.0,dist*0.7); e.pos.x+=Math.sin(base)*L; e.pos.z+=Math.cos(base)*L; clamp(e.pos,e.cfg.r); resolveObst(e.pos,e.cfg.r); e.prevX=e.pos.x; e.prevZ=e.pos.z; spawnShockwave(e.pos.x,e.pos.z,2.0,col,0.2,0.6); triggerEnemyAttack(e,0.22); }
+              if(!e.gravitySource&&dist>1.6&&dist<11){ const L=Math.min(4.0,dist*0.7); e.pos.x+=Math.sin(base)*L; e.pos.z+=Math.cos(base)*L; clamp(e.pos,e.cfg.r); resolveObst(e.pos,e.cfg.r); e.prevX=e.pos.x; e.prevZ=e.pos.z; spawnShockwave(e.pos.x,e.pos.z,2.0,col,0.2,0.6); triggerEnemyAttack(e,0.22); }
               cd=2.4+Math.random(); break;
             case 'speeder': // Afterburn: drop a damaging scorch where it stands
               castMeteor(e.pos.x,e.pos.z,1.7,Math.round(11*dm),col,0.5); cd=1.8+Math.random()*0.6; break;

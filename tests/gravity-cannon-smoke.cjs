@@ -23,6 +23,19 @@ gameTest.gravityProbe=(kind)=>{
   result.reused=next===b;result.clean=next.bulletKind==='bullet'&&!next.gravityRing.visible;
   mp.soloMode=true;return result;
 };
+gameTest.gravityHell=(type,global=false,wall=false)=>{
+ gameTest.gravityFixture();mp.soloMode=true;nbDifficulty='hell';waveNum=40;waveSpawned=true;waveClear=false;waveTransition=false;_waveSpawnQueue.length=0;
+ player.pos.set(12,0,0);player.hp=player.maxHp=10000;player.gun='gravity';mouse.down=false;
+ spawnEnemy(type,4.4,0);const e=enemies[enemies.length-1];e.hp=10000;e.maxHp=100000;e.spawnAnim=0;e.dashActive=60;e.spd*=2;
+ if(global)applySkill('gravityAscension');
+ if(wall)obstacleBoxes.push({x:2,z:0,hw:.5,hd:8});
+ const b=fireBullet({x:0,z:0},new THREE.Vector3(0,0,1),true,1,0,false,null,mp.myId,'gravity',{gravityCharge:global?1:0});b.spd=0;b.life=60;
+ const initial=e.pos.length(),speed=e.spd;
+ const history=[];for(let i=0;i<60;i++){update(.02);if(i<6)history.push({x:e.pos.x,z:e.pos.z,source:!!e.gravitySource,fields:activeGravityFields.length,r:b.gravityRadius,active:b.active});}
+ const end=e.pos.length(),controlled=!!e.gravitySource;
+ releaseBullet(b);update(.02);const released=!e.gravitySource;
+ nbDifficulty='hard';return {initial,end,speed,controlled,released,history};
+};
 gameTest.gravityWall=()=>{
   gameTest.gravityFixture();mp.soloMode=true;
   obstacleBoxes.push({x:0,z:2,hw:3,hd:.3});
@@ -50,6 +63,12 @@ gameTest.gravityScreenshot=()=>{
     for(const k of ['normal','boss','wall'])assert.ok(results[k].hp<10000);
     for(const k of ['replica','guest'])assert.equal(results[k].hp,10000);
     for(const r of Object.values(results)){assert.equal(r.active,false);assert.equal(r.ring,false);assert.ok(r.reused&&r.clean);}
+    for(const type of ['speeder','dasher','berserker'])for(const global of [false,true]){
+      const r=await p.evaluate(({type,global})=>gameTest.gravityHell(type,global,global),{type,global});
+      assert.ok(r.end<r.initial-1,JSON.stringify({type,global,...r}));assert.ok(r.controlled);assert.ok(r.released);
+    }
+    const shielded=await p.evaluate(()=>gameTest.gravityHell('speeder',false,true));assert.equal(shielded.controlled,false);
+    console.log('PASS real Hell wave 40 updates: speeders, dashes, rage, global walls, release and local wall shielding');
     const wall=await p.evaluate(()=>gameTest.gravityWall());assert.ok(wall.z<1.4);assert.equal(wall.speed,0);assert.equal(wall.blocked,false);
     console.log('PASS pull, boss resistance, wall blocking, authority, explosion, pool reuse',JSON.stringify(results));
     await p.reload();await p.evaluate(()=>gameTest.unlockGravity());
