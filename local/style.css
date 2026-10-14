@@ -1,0 +1,15 @@
+:root { --chrome-top: 0px; --chrome-side: 0px; }
+#nbLocalDialog { color: #e1f7ff; background: #101827; border: 1px solid #55dfff; border-radius: 12px; box-sizing: border-box; margin: auto; padding: 24px; max-width: min(620px, calc(100vw - 32px)); max-height: 80vh; overflow-y: auto; font: 15px/1.5 system-ui; cursor: auto; }
+#nbLocalDialog::backdrop { background: #000b; }
+#nbLocalDialog { touch-action: pan-y; }
+#nbLocalDialog input { box-sizing: border-box; width: 100%; }
+#nbLocalDialog button, #nbLocalDialog select, #nbLocalDialog input { padding: 10px; margin: 5px 0; }
+#nbLocalDialog label { display: block; margin-top: 14px; }
+#nbLocalDialog p { margin: 12px 0; }
+#nbLocalDialog h2 { margin-bottom: 12px; }
+#nbLocalDialog button { cursor: pointer; color: #e1f7ff; background: #1c3347; border: 1px solid #54788e; border-radius: 6px; }
+#nbLocalDialog button:hover:not(:disabled) { background: #284b63; }
+#nbLocalDialog button:disabled { opacity: .5; }
+#nbLocalDialog button:disabled { cursor: default; }
+#nbBackupPreview { color: #7ce8c8; font-weight: 600; }
+body:has(#nbLocalDialog) #crosshair { display: none; }

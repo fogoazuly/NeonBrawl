@@ -1,0 +1,18 @@
+#nbAuthDialog { box-sizing: border-box; width: 430px; max-width: calc(100vw - 28px); max-height: calc(100dvh - 28px); overflow: auto; margin: auto; padding: 28px; border: 1px solid #51ded2; border-radius: 18px; background: #0c1722; color: #e6fcff; box-shadow: 0 0 50px #14b8a633; font: 15px/1.5 system-ui, sans-serif; cursor: auto; touch-action: pan-y; }
+#nbAuthDialog::backdrop { background: #020610dc; backdrop-filter: blur(5px); }
+#nbAuthDialog [hidden] { display: none !important; }
+#nbAuthDialog h2 { margin: 0 24px 12px 0; font-size: 26px; color: #7af5d9; }
+#nbAuthDialog p { margin: 12px 0; overflow-wrap: anywhere; }
+#nbAuthDialog .nb-auth-note { font-size: 13px; color: #a8bdc8; }
+#nbAuthDialog label { display: block; margin: 14px 0; }
+#nbAuthDialog input { box-sizing: border-box; display: block; width: 100%; margin-top: 5px; border: 1px solid #47606c; border-radius: 8px; padding: 12px; background: #081119; color: #fff; font: inherit; }
+#nbAuthDialog button { box-sizing: border-box; width: 100%; padding: 11px; margin: 6px 0; border: 1px solid #42636d; border-radius: 8px; background: #192f3b; color: #e6fcff; cursor: pointer; font: inherit; font-weight: 600; }
+#nbAuthDialog #nbAuthSubmit { background: #7af5d9; color: #09201c; border-color: #7af5d9; }
+#nbAuthDialog #nbAuthClose { position: absolute; right: 12px; top: 10px; width: 36px; padding: 4px; border: 0; background: none; }
+#nbAuthDialog .nb-auth-links { display: flex; gap: 8px; }
+#nbAuthDialog .nb-auth-links button { font-size: 13px; background: transparent; }
+#nbAuthDialog button:disabled { opacity: .5; cursor: wait; }
+#nbAuthDialog :focus-visible { outline: 2px solid #f6d975; outline-offset: 3px; }
+#nbAuthMessage { color: #85efd6; }
+#nbAuthMessage.error { color: #ffaaaa; }
+body:has(#nbAuthDialog[open]) #crosshair { display: none; }

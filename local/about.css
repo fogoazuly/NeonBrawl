@@ -1,0 +1,12 @@
+/* About / game-info overlay — the page's crawlable copy (h1, description, FAQ). */
+.pixo-about-overlay{position:fixed;top:var(--chrome-top,42px);left:var(--chrome-side,52px);right:0;bottom:0;z-index:960;display:none;background:rgba(6,8,14,0.94);overflow-y:auto;padding:30px 18px 70px;}
+.pixo-about-overlay.show{display:block;}
+@media (max-width:760px){ .pixo-about-overlay{left:0;} }
+.pixo-about-inner{max-width:680px;margin:0 auto;font-family:system-ui,'Segoe UI',sans-serif;color:#cfd6e4;font-size:14px;line-height:1.75;}
+.pixo-about-inner h1{font-size:20px;color:#fff;margin:0 0 10px;line-height:1.45;}
+.pixo-about-inner h2{font-size:15px;color:#fff;margin:24px 0 6px;}
+.pixo-about-inner p{margin:8px 0;}
+.pixo-about-inner ul{margin:8px 0 8px 20px;padding:0;}
+.pixo-about-inner li{margin:4px 0;}
+.pixo-about-close{display:block;margin:0 0 18px auto;background:#ffffff14;border:1px solid #ffffff33;color:#fff;padding:8px 16px;cursor:pointer;font-family:inherit;font-size:12px;border-radius:4px;letter-spacing:1px;}
+.pixo-about-close:hover{background:#ffffff26;}
