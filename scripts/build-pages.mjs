@@ -4,6 +4,7 @@ import { loadEnvFile } from 'node:process';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { publicAuthConfig } from '../auth-config.mjs';
+import { publicMultiplayerConfig } from '../multiplayer-config.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 if (existsSync(path.join(root, '.env'))) loadEnvFile(path.join(root, '.env'));
@@ -25,6 +26,6 @@ await cp(path.join(root, 'node_modules/peerjs/dist/peerjs.min.js'), path.join(ou
 await cp(path.join(root, 'node_modules/@supabase/supabase-js/dist/umd/supabase.js'), path.join(out, 'vendor/supabase.js'));
 await writeFile(path.join(out, '.nojekyll'), '');
 await writeFile(path.join(out, 'runtime-config.js'), `window.NEONBRAWL_CONFIG = ${JSON.stringify({
-  auth, multiplayer: false, iceServers: [], assets: { cardIcons: false, music: false, samples: false }
+  auth, ...publicMultiplayerConfig(process.env), assets: { cardIcons: false, music: false, samples: false }
 })};\n`);
 console.log(`Build Pages: ${out} (login ${auth ? 'configurado' : 'desativado — configure as variáveis Supabase'})`);

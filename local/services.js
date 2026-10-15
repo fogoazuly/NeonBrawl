@@ -28,6 +28,15 @@
   window.NeonBrawlServices = {
     async getPeerConfig() {
       if (config.multiplayer === false) throw new Error('Multiplayer ainda indisponível nesta versão online.');
+      if (config.peerServer) {
+        // The first request wakes a sleeping free signaling service before PeerJS starts its timers.
+        const peer = config.peerServer;
+        const response = await fetch(`https://${peer.host}:${peer.port}${config.peerPath}/peerjs/id`, {
+          cache: 'no-store', credentials: 'omit', signal: AbortSignal.timeout(90000)
+        });
+        if (!response.ok) throw new Error('Servidor de salas indisponível. Tente novamente em instantes.');
+        return { ...peer, path: config.peerPath, config: { iceServers: config.iceServers } };
+      }
       return { host: location.hostname, port: Number(location.port) || (location.protocol === 'https:' ? 443 : 80),
         secure: location.protocol === 'https:', path: config.peerPath, config: { iceServers: config.iceServers } };
     }

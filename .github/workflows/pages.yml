@@ -23,6 +23,7 @@ jobs:
         env:
           SUPABASE_URL: ${{ vars.SUPABASE_URL }}
           SUPABASE_PUBLISHABLE_KEY: ${{ vars.SUPABASE_PUBLISHABLE_KEY }}
+          PEER_SERVER_URL: ${{ vars.PEER_SERVER_URL }}
       - uses: actions/upload-pages-artifact@v4
         with:
           path: dist
