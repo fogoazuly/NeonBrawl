@@ -32,10 +32,32 @@ reutilização de vaga, anfitrião saindo, nova sala e reconexão real do canal 
 Executado em dois clientes na mesma máquina, com runtime-config substituído apenas
 no teste. Não é comprovação entre duas redes nem teste de relay TURN.
 
-A conta Cloudflare foi criada. A ativação Realtime exige cartão/PayPal e aceita
-cobrança por excedente; assinatura não ativada, aguardando decisão do proprietário.
+A conta Cloudflare foi criada, mas não ativada: o proprietário escolheu uma alternativa
+sem cartão/PayPal. O workspace Metered `neonbrawl-fogoazuly` foi criado e a opção
+Free Trial Global de 500 MB foi selecionada. O resumo inicial exibiu dados diferentes
+antes de carregar; usar o limite de 500 MB confirmado na tela de ativação.
+
+## Alternativa Metered preparada (ainda não publicada)
+
+No Render, configurar TURN_PROVIDER=metered, METERED_DOMAIN=neonbrawl-fogoazuly.metered.live
+e METERED_API_KEY com a chave de uma credencial dedicada à beta; manter também as
+duas variáveis públicas Supabase. Não é necessária a chave mestra do Metered.
+O backend consulta GET /api/v1/turn/credentials e só devolve urls/username/credential
+após validar a conta. A chave da API fica no servidor, mas a credencial TURN é
+necessariamente recebida pelo jogador e pode ser copiada para consumir a franquia.
+Esta opção usa uma credencial compartilhada revogável, sem expiração automática;
+não confundir com as credenciais temporárias do adaptador Cloudflare.
+Rotacionar pelo painel se necessário e acompanhar a franquia antes de ampliar a beta.
+
+39 testes automatizados passaram, incluindo autenticação, cache, respostas inválidas,
+remoção de campos extras e bloqueio de domínio inválido/redirecionamento no Metered.
+Ainda falta criar a credencial, armazená-la no Render, publicar o backend e testar
+relay real antes de habilitar o Pages. Formulário preparado como `NeonBrawl multiplayer beta`.
+Criação da credencial e envio da chave ao Render aguardam confirmação específica
+exigida pelas regras do controle de navegador.
 
 Referências:
 - https://render.com/docs/free
 - https://render.com/docs/websocket
 - https://developers.cloudflare.com/realtime/turn/generate-credentials/
+- https://www.metered.ca/docs/turn-rest-api/get-credential/

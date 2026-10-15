@@ -3,7 +3,11 @@ import { createClient } from '@supabase/supabase-js';
 // Single-instance beta broker. Never returns the provider's permanent API token.
 export function installTurnService(app, { auth, env = process.env, fetchImpl = fetch, verifyUser, now = Date.now }) {
   const origin = env.FRONTEND_ORIGIN || 'https://fogoazuly.github.io';
-  const enabled = Boolean(auth && env.TURN_KEY_ID && env.TURN_KEY_API_TOKEN);
+  const metered = env.TURN_PROVIDER === 'metered';
+  const meteredDomain = env.METERED_DOMAIN || '';
+  const enabled = Boolean(auth && (metered
+    ? /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.metered\.live$/.test(meteredDomain) && env.METERED_API_KEY
+    : env.TURN_KEY_ID && env.TURN_KEY_API_TOKEN));
   const boundedFetch = (url, options = {}) => fetchImpl(url, { ...options, signal: AbortSignal.timeout(15000) });
   const client = enabled && !verifyUser ? createClient(auth.url, auth.publishableKey, {
     auth: { persistSession: false, autoRefreshToken: false }, global: { fetch: boundedFetch }
@@ -37,14 +41,17 @@ export function installTurnService(app, { auth, env = process.env, fetchImpl = f
         if (cache.size >= 500) return res.status(429).json({ error: 'Servidor ocupado. Tente mais tarde.' });
         entry = { until: now() + 600000 };
         entry.promise = (async () => {
-          const response = await boundedFetch(`https://rtc.live.cloudflare.com/v1/turn/keys/${encodeURIComponent(env.TURN_KEY_ID)}/credentials/generate-ice-servers`, {
+          const response = metered
+            ? await boundedFetch(`https://${meteredDomain}/api/v1/turn/credentials?apiKey=${encodeURIComponent(env.METERED_API_KEY)}`, { redirect: 'error' })
+            : await boundedFetch(`https://rtc.live.cloudflare.com/v1/turn/keys/${encodeURIComponent(env.TURN_KEY_ID)}/credentials/generate-ice-servers`, {
             method: 'POST', headers: { Authorization: `Bearer ${env.TURN_KEY_API_TOKEN}`, 'Content-Type': 'application/json' },
             body: JSON.stringify({ ttl: 86400 })
           });
           if (!response.ok) throw new Error('Provider unavailable');
           const data = await response.json();
-          if (!Array.isArray(data.iceServers)) throw new Error('Invalid ICE response');
-          const iceServers = data.iceServers.map(server => ({
+          const servers = metered ? data : data.iceServers;
+          if (!Array.isArray(servers)) throw new Error('Invalid ICE response');
+          const iceServers = servers.map(server => ({
             urls: (Array.isArray(server.urls) ? server.urls : [server.urls]).filter(url => typeof url === 'string' && /^(stun|turn|turns):/.test(url) && !/:53(?:\?|$)/.test(url)),
             ...(typeof server.username === 'string' ? { username: server.username } : {}),
             ...(typeof server.credential === 'string' ? { credential: server.credential } : {})
