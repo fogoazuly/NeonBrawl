@@ -12,12 +12,20 @@ catch { playwright = require(process.env.PLAYWRIGHT_MODULE || path.join(os.homed
   });
   try {
     const context = await browser.newContext();
+    if (process.env.PEER_SERVER_URL) {
+      const { publicMultiplayerConfig } = await import('../multiplayer-config.mjs');
+      const config = publicMultiplayerConfig(process.env);
+      await context.route('**/runtime-config.js', route => route.fulfill({ contentType: 'text/javascript', body: `window.NEONBRAWL_CONFIG=${JSON.stringify({ ...config, assets: {} })}` }));
+      const source = await require('node:fs/promises').readFile('local/services.js', 'utf8');
+      await context.route('**/local/services.js', route => route.fulfill({ contentType: 'text/javascript', body: source }));
+      context.setDefaultTimeout(100000);
+    }
     await context.addInitScript(() => { try { localStorage.setItem('nbGfxTier', 'potato'); } catch {} });
     const errors = [];
     context.on('page', page => page.on('pageerror', error => errors.push(error.message)));
     const host = await context.newPage(), guest = await context.newPage();
     for (const page of [host, guest]) {
-      await page.goto('http://127.0.0.1:3000');
+      await page.goto(process.env.GAME_URL || 'http://127.0.0.1:3000');
       await page.waitForFunction(() => typeof window.nbMenuScreen === 'function');
       await page.locator('#nbBtnMP').click();
     }

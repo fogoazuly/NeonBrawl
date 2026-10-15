@@ -16,6 +16,25 @@ Ainda pendentes: TURN com credenciais temporárias geradas no backend, teste de 
 entre duas redes reais e teste de reconexão em ambiente publicado.
 STUN sozinho não garante conexão em redes restritas. Não inserir chaves permanentes TURN no build.
 
+## Integração TURN preparada
+
+`POST /api/ice` valida o token com Supabase Auth antes de fornecer credenciais
+temporárias Cloudflare (24 horas, para suportar runs longas; sem renovação durante runs maiores).
+Cache por usuário por 10 minutos, respostas no-store, timeout de 15 segundos,
+limite global de 120 pedidos/minuto e 500 usuários no cache. Esses limites protegem
+a emissão; não limitam os GB consumidos no provedor. Uma instância beta apenas.
+Configure SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, TURN_KEY_ID e TURN_KEY_API_TOKEN
+no Render e faça deploy manual. A chave permanente nunca entra no runtime-config.
+Depois de validar relay real, configure TURN_ENABLED=1 e PEER_SERVER_URL no Pages.
+
+Teste com o site público e sinalização Render passou: código inválido, entrada/saída,
+reutilização de vaga, anfitrião saindo, nova sala e reconexão real do canal WebRTC.
+Executado em dois clientes na mesma máquina, com runtime-config substituído apenas
+no teste. Não é comprovação entre duas redes nem teste de relay TURN.
+
+A conta Cloudflare foi criada. A ativação Realtime exige cartão/PayPal e aceita
+cobrança por excedente; assinatura não ativada, aguardando decisão do proprietário.
+
 Referências:
 - https://render.com/docs/free
 - https://render.com/docs/websocket

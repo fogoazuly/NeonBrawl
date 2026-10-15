@@ -6,6 +6,7 @@ import path from 'node:path';
 import { existsSync } from 'node:fs';
 import { loadEnvFile } from 'node:process';
 import { publicAuthConfig } from './auth-config.mjs';
+import { installTurnService } from './turn-service.mjs';
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 if (existsSync(path.join(root, '.env'))) loadEnvFile(path.join(root, '.env'));
@@ -18,6 +19,7 @@ const iceServers = JSON.parse(process.env.ICE_SERVERS_JSON || '[]');
 if (!Array.isArray(iceServers)) throw new Error('ICE_SERVERS_JSON deve ser uma lista JSON.');
 
 app.disable('x-powered-by');
+installTurnService(app, { auth });
 app.get('/health', (_req, res) => res.json({ status: 'ok' }));
 app.get('/runtime-config.js', (_req, res) => {
   res.type('js').set('Cache-Control', 'no-store').send(

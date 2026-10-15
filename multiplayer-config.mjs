@@ -9,6 +9,7 @@ export function publicMultiplayerConfig(env = {}) {
     multiplayer: true,
     peerServer: { host: url.hostname, port: Number(url.port) || 443, secure: true },
     peerPath: '/peerjs',
+    ...(env.TURN_ENABLED === '1' ? { turnEndpoint: url.origin + '/api/ice' } : {}),
     iceServers: [{ urls: 'stun:stun.cloudflare.com:3478' }]
   };
 }

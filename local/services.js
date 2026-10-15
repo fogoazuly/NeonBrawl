@@ -35,7 +35,18 @@
           cache: 'no-store', credentials: 'omit', signal: AbortSignal.timeout(90000)
         });
         if (!response.ok) throw new Error('Servidor de salas indisponível. Tente novamente em instantes.');
-        return { ...peer, path: config.peerPath, config: { iceServers: config.iceServers } };
+        let iceServers = config.iceServers;
+        if (config.turnEndpoint) {
+          const session = await window.NeonBrawlAuth?.getClient()?.auth.getSession();
+          const token = session?.data?.session?.access_token;
+          if (!token || session.error) throw new Error('Entre na sua conta para jogar online.');
+          const relay = await fetch(config.turnEndpoint, { method: 'POST', credentials: 'omit', cache: 'no-store',
+            headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(20000) });
+          if (!relay.ok) throw new Error(relay.status === 401 ? 'Entre novamente na sua conta.' : 'Conexão online indisponível. Tente novamente em instantes.');
+          iceServers = (await relay.json()).iceServers;
+          if (!Array.isArray(iceServers) || !iceServers.length) throw new Error('Configuração online inválida.');
+        }
+        return { ...peer, path: config.peerPath, config: { iceServers } };
       }
       return { host: location.hostname, port: Number(location.port) || (location.protocol === 'https:' ? 443 : 80),
         secure: location.protocol === 'https:', path: config.peerPath, config: { iceServers: config.iceServers } };
@@ -64,11 +75,11 @@
   } };
   window.PixoInvite = {
     open({ roomCode }) {
-      const el = dialog('Convidar para a sala local');
+      const el = dialog(config.peerServer ? 'Convidar para a sala online' : 'Convidar para a sala local');
       const url = new URL(location.pathname, location.origin); url.searchParams.set('join', roomCode);
-      paragraph(el, 'Abra este endereço em outra janela do navegador neste PC:');
+      paragraph(el, config.peerServer ? 'Envie este link para quem vai jogar com você:' : 'Abra este endereço em outra janela do navegador neste PC:');
       const input = document.createElement('input'); input.value = url.href; input.readOnly = true; el.append(input); input.select();
-      paragraph(el, 'Para outro computador na rede, use o endereço IP do servidor.');
+      paragraph(el, config.peerServer ? 'O anfitrião precisa manter o jogo aberto durante a partida.' : 'Para outro computador na rede, use o endereço IP do servidor.');
     },
     attachAutoJoin(callback) { const code = new URLSearchParams(location.search).get('join'); if (code) callback(code); }
   };
