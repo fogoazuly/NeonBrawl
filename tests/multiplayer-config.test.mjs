@@ -35,3 +35,37 @@ test('remote adapter waits for wakeup and reports server failure', async () => {
   ok = false;
   await assert.rejects(context.window.NeonBrawlServices.getPeerConfig(), /indisponível/);
 });
+
+test('online adapter requires login and uses authenticated TURN response', async () => {
+  let session = null, status = 200;
+  let servers = [{ urls: 'turn:relay.test:443', username: 'temporary', credential: 'relay-secret' }];
+  const calls = [];
+  const context = vm.createContext({
+    window: {
+      addEventListener() {},
+      NEONBRAWL_CONFIG: publicMultiplayerConfig({ PEER_SERVER_URL: 'https://rooms.example.test', TURN_ENABLED: '1' }),
+      NeonBrawlAuth: { getClient: () => ({ auth: { getSession: async () => ({ data: { session } }) } }) }
+    },
+    localStorage: { getItem: () => null }, AbortSignal,
+    fetch: async (url, options) => {
+      calls.push({ url, options });
+      if (url.endsWith('/id')) return { ok: true };
+      return { ok: status === 200, status, json: async () => ({ iceServers: servers }) };
+    }
+  });
+  vm.runInContext(await readFile('local/services.js', 'utf8'), context);
+  const getConfig = context.window.NeonBrawlServices.getPeerConfig;
+  await assert.rejects(getConfig(), /Entre na sua conta/);
+  assert.equal(calls.length, 1);
+  session = { access_token: 'test-session' };
+  assert.equal((await getConfig()).config.iceServers, servers);
+  assert.equal(calls.at(-1).url, 'https://rooms.example.test/api/ice');
+  assert.equal(calls.at(-1).options.headers.Authorization, 'Bearer test-session');
+  assert.equal(calls.at(-1).options.credentials, 'omit');
+  status = 401;
+  await assert.rejects(getConfig(), /Entre novamente/);
+  status = 503;
+  await assert.rejects(getConfig(), /indisponível/);
+  status = 200; servers = [];
+  await assert.rejects(getConfig(), /inválida/);
+});

@@ -6,14 +6,13 @@ Build `npm ci`; start `node server.mjs`; HOST=0.0.0.0; TRUST_PROXY=1.
 Repositório público conectado por URL: atualizações do servidor exigem deploy manual no painel.
 
 O servidor conecta as salas; a simulação continua no navegador do anfitrião.
-GitHub Pages continua com multiplayer desativado até configurar a variável de Actions
-PEER_SERVER_URL com a origem HTTPS acima. O build exporta somente endereço público e STUN.
+GitHub Actions configurado com PEER_SERVER_URL=https://neonbrawl-rooms.onrender.com
+e TURN_ENABLED=1 após validar o relay. O build exporta endereço público, STUN e endpoint autenticado.
 O cliente aguarda até 90 segundos para acordar a instância antes de iniciar PeerJS.
 
 Verificações: /health, /peerjs/peerjs/id com CORS para Pages, configuração TLS,
 rejeição de URLs com credenciais e smoke do site com solo na onda 1.
-Ainda pendentes: TURN com credenciais temporárias geradas no backend, teste de partida
-entre duas redes reais e teste de reconexão em ambiente publicado.
+Ainda pendente: teste de partida entre duas redes reais.
 STUN sozinho não garante conexão em redes restritas. Não inserir chaves permanentes TURN no build.
 
 ## Integração TURN preparada
@@ -37,7 +36,7 @@ sem cartão/PayPal. O workspace Metered `neonbrawl-fogoazuly` foi criado e a op�
 Free Trial Global de 500 MB foi selecionada. O resumo inicial exibiu dados diferentes
 antes de carregar; usar o limite de 500 MB confirmado na tela de ativação.
 
-## Alternativa Metered preparada (ainda não publicada)
+## Metered publicado
 
 No Render, configurar TURN_PROVIDER=metered, METERED_DOMAIN=neonbrawl-fogoazuly.metered.live
 e METERED_API_KEY com a chave de uma credencial dedicada à beta; manter também as
@@ -49,12 +48,15 @@ Esta opção usa uma credencial compartilhada revogável, sem expiração autom�
 não confundir com as credenciais temporárias do adaptador Cloudflare.
 Rotacionar pelo painel se necessário e acompanhar a franquia antes de ampliar a beta.
 
-39 testes automatizados passaram, incluindo autenticação, cache, respostas inválidas,
+40 testes automatizados passaram, incluindo autenticação, cache, respostas inválidas,
 remoção de campos extras e bloqueio de domínio inválido/redirecionamento no Metered.
-Ainda falta criar a credencial, armazená-la no Render, publicar o backend e testar
-relay real antes de habilitar o Pages. Formulário preparado como `NeonBrawl multiplayer beta`.
-Criação da credencial e envio da chave ao Render aguardam confirmação específica
-exigida pelas regras do controle de navegador.
+Com autorização explícita, credencial `NeonBrawl multiplayer beta` criada e chave
+armazenada exclusivamente no Render. Backend 6e555e1 publicado com sucesso.
+POST /api/ice sem login retorna 401. Teste no site publicado, com sessão existente:
+Supabase validou a conta e dois RTCPeerConnection com iceTransportPolicy=relay
+trocaram uma mensagem; getStats confirmou candidato selecionado do tipo relay/UDP.
+Página reutilizável: /local/multiplayer-check.html. Não altera progresso e fecha
+os canais ao terminar. Não equivale a dois dispositivos em redes diferentes.
 
 Referências:
 - https://render.com/docs/free
