@@ -13,3 +13,9 @@
 #nbLocalDialog button:disabled { cursor: default; }
 #nbBackupPreview { color: #7ce8c8; font-weight: 600; }
 body:has(#nbLocalDialog) #crosshair { display: none; }
+/* Account leaderboard */
+#nbLeaderboard{background:#101b29;color:#eefaff;border:1px solid #47d7e8;border-radius:16px;width:min(760px,90vw);max-height:85vh;padding:24px;margin:auto;overflow:auto;font:15px system-ui}
+#nbLeaderboard::backdrop{background:#000b}
+#nbLeaderboard button,#nbLeaderboard select{background:#203344;color:#efffff;border:1px solid #557888;border-radius:6px;padding:9px;margin:4px}
+.nb-board-filters{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+#nbBoardRows li{padding:10px 4px;border-bottom:1px solid #ffffff15}
