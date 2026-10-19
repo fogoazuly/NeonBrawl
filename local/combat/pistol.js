@@ -20,3 +20,19 @@ export class PrecisionStreak {
   }
 }
 export const lastWordBonus = level => ({ damage: [1,1.6,1.9,2.2][level] || 1, pierce: Math.max(0,Math.min(3,level||0)) });
+
+export class NeonJudgment {
+  constructor() { this.reset(); }
+  reset() { this.hits = 0; this.rounds = 0; }
+  get ready() { return this.hits >= 30; }
+  hit() { if (!this.rounds) this.hits = Math.min(30, this.hits + 1); }
+  reload(size) {
+    this.rounds = this.ready ? Math.max(1, Math.floor(size)) : 0;
+    if (this.ready) this.hits = 0;
+  }
+  fire() {
+    if (!this.rounds) return false;
+    this.rounds--;
+    return true;
+  }
+}

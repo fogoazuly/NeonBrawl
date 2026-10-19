@@ -1,8 +1,9 @@
 import { createRunScoreRecorder } from './run-score.js';
 import { setupLeaderboard } from './leaderboard.js';
-import { PrecisionStreak, lastWordBonus } from './combat/pistol.js';
+import { PrecisionStreak, lastWordBonus, NeonJudgment } from './combat/pistol.js';
 setupLeaderboard();
 const pistolPrecision = new PrecisionStreak();
+const pistolJudgment = new NeonJudgment();
 import { createRoomLifecycle } from './multiplayer/rooms.js';
 import { createCollisionSystem } from './combat/collision.js';
 import { createDamageSystem } from './combat/damage.js';
@@ -4654,7 +4655,7 @@ function fireBullet(pos, dir, isPlayer, dmg, pierce=0, visualOnly=false, ownerPe
     slot.mesh.scale.setScalar(1);
   }
   slot.spd=isPlayer?BULLET_SPD:ENEMY_BULLET_SPD; slot.life=isPlayer?2.2:2.9; slot.dmg=dmg; slot.pierce=pierce; slot.ownerPerm=ownerPerm; slot.ownerId=isPlayer?ownerId:null;
-  slot.pistolShot=null; slot.pistolRicochet=0;
+  slot.pistolShot=null; slot.pistolRicochet=0; slot.judgmentCharge=false;
   slot.bounceLeft=isPlayer ? BOUNCE_MAX[ownerPerm?.bounce ?? (playerSkills.bounce||0)] : 0;
   slot.mesh.rotation.x=0;
   slot.bulletKind='bullet'; slot.hitR=0.22; slot.explodeR=0; slot.explodeMult=0; slot.boomerang=false; slot.returning=false; slot.pierceHits=0;
@@ -4667,6 +4668,7 @@ function fireBullet(pos, dir, isPlayer, dmg, pierce=0, visualOnly=false, ownerPe
   slot.delay=Math.max(0,Number(bulletOpts?.delay)||0);
   if(isPlayer&&gunCfg){
     if(gunCfg.id==='pistol'&&bulletOpts?.pistolShot){
+      slot.judgmentCharge=!!(ownerPerm?.pistolAscension&&bulletOpts.pistolPrimary&&!bulletOpts.pistolJudgment&&!visualOnly&&(mp.soloMode||mp.isHost));
       slot.pistolRicochet=Math.max(0,Math.min(4,ownerPerm?.pistolRicochet||0));
       slot.bounceLeft+=slot.pistolRicochet;
       if(bulletOpts?.pistolShot){
@@ -4677,6 +4679,11 @@ function fireBullet(pos, dir, isPlayer, dmg, pierce=0, visualOnly=false, ownerPe
           const bonus=lastWordBonus(Math.max(0,Math.min(3,ownerPerm?.pistolLastWord||0)));
           slot.dmg*=bonus.damage;slot.pierce+=bonus.pierce;
           if(bonus.pierce){slot.body.material=BULLET_STYLES.sniper.mat;slot.visualColor=0xffdd66;slot.mesh.scale.multiplyScalar(1.35);}
+        }
+        if(ownerPerm?.pistolAscension&&bulletOpts.pistolJudgment){
+          slot.dmg*=2;slot.pierce+=3;
+          slot.body.material=BULLET_STYLES.sniper.mat;slot.visualColor=0xe8baff;
+          slot.mesh.scale.multiplyScalar(1.5);
         }
         slot.dmg=Math.max(1,Math.round(slot.dmg));
       }
@@ -4767,7 +4774,7 @@ function fireBullet(pos, dir, isPlayer, dmg, pierce=0, visualOnly=false, ownerPe
 }
 function releaseBullet(slot){
   if(slot.active)pistolPrecision.finish(slot.pistolShot,false);
-  slot.pistolShot=null;slot.pistolRicochet=0;
+  slot.pistolShot=null;slot.pistolRicochet=0;slot.judgmentCharge=false;
   if(slot.gravityRing) slot.gravityRing.visible=false;
   slot.active=false; slot.mesh.visible=false; slot.mesh.scale.setScalar(1);
   slot.netId=null; slot.visualOnly=false; slot.ownerPerm=null; slot.ownerId=null;
@@ -4897,6 +4904,31 @@ function updateGravityAscension(dt,wantFire,cooldownMult=1){
     player.gravityCharge=0;player.gravityChargeLatch=full&&wantFire;
   }
   return true;
+}
+function startManualReload(){
+  if(gState!=='playing'||nbPaused||!player||player.dead||player.reloadT>0)return;
+  if(player.ammo>=currentMagSize()&&!(player.gun==='pistol'&&playerSkills.pistolAscension&&pistolJudgment.ready))return;
+  player.reloadDur=currentReloadTime();player.reloadT=player.reloadDur;player.ammo=0;sReloadStart();
+}
+function registerJudgmentHit(b){
+  if(!b.judgmentCharge)return;
+  b.judgmentCharge=false; // Piercing still counts as just one primary hit.
+  if(b.ownerId===mp.myId)pistolJudgment.hit();
+  else if(mp.isHost){
+    const conn=mp.conns.get(b.ownerId);
+    if(conn?.open)conn.send(JSON.stringify({type:'PISTOL_CHARGE',targetId:b.ownerId}));
+  }
+}
+let pistolJudgmentHud=null;
+function updatePistolJudgmentHud(){
+  if(!pistolJudgmentHud){
+    pistolJudgmentHud=document.createElement('button');pistolJudgmentHud.type='button';pistolJudgmentHud.id='pistolJudgmentHud';
+    pistolJudgmentHud.addEventListener('click',()=>{if(pistolJudgment.ready)startManualReload();});
+    document.body.appendChild(pistolJudgmentHud);
+  }
+  const active=gState==='playing'&&!player.dead&&player.gun==='pistol'&&playerSkills.pistolAscension;
+  pistolJudgmentHud.style.display=active?'block':'none';
+  pistolJudgmentHud.textContent=pistolJudgment.rounds>0?'NEON JUDGMENT • '+pistolJudgment.rounds+' empowered rounds • DAMAGE ×2 • PIERCE +3':pistolJudgment.ready?'NEON JUDGMENT • READY — RELOAD / TAP TO ASCEND':'NEON JUDGMENT • '+pistolJudgment.hits+' / 30 hits';
 }
 function updateGravityChargeHud(){
   if(!gravityChargeHud){gravityChargeHud=document.createElement('div');gravityChargeHud.id='gravityChargeHud';document.body.appendChild(gravityChargeHud);}
@@ -6494,6 +6526,7 @@ function atkScale(){ return (playerStats.attackDmg/25)*crystalPowerMult(); }
 const SKILL_DEFS = {
   pistolRicochet:{name:'Ricochet',icon:'↪️',requiresGun:'pistol',desc:['','Pistol: +1 wall bounce, redirects toward a visible enemy within 14m','Pistol: +2 aimed wall bounces','','Pistol: +3 aimed wall bounces','Pistol: +4 aimed wall bounces']},
   pistolPrecision:{name:'Precise Shot',icon:'🎯',requiresGun:'pistol',desc:['','Pistol: consecutive primary hits grant +4% damage each (max +20%). A missed primary resets the bonus.','','Pistol: +6% per consecutive primary hit (max +30%)','','Pistol: +8% per consecutive primary hit (max +40%)']},
+  pistolAscension:{name:'Neon Judgment',icon:'⚖️',requiresGun:'pistol',desc:['','','','','','Land 30 primary shots, then reload: one magazine deals 2× damage and pierces +3 enemies. Bonus shots inherit the effect. Empowered shots cannot charge it. Reloading discards remaining empowered rounds. Infinite Reserve: press Reload when ready.']},
   pistolLastWord:{name:'Last Word',icon:'💥',requiresGun:'pistol',desc:['','Pistol: last round deals +60% damage and pierces +1 enemy. Includes bonus shots; requires consuming ammo.','','Pistol: last round +90% damage and +2 pierce','','Pistol: last round +120% damage and +3 pierce']},
   eventHorizon:{name:'Event Horizon',icon:'🌀',requiresGun:'gravity',desc:['','Gravity Cannon: +20% pull radius','Gravity Cannon: +40% pull radius','','Gravity Cannon: +60% pull radius','Gravity Cannon: +80% pull radius']},
   unstableCollapse:{name:'Unstable Collapse',icon:'💥',requiresGun:'gravity',desc:['','Gravity Cannon: +8% explosion damage per enemy in the field (max +40%)','','Gravity Cannon: +12% per enemy (max +60%)','','Gravity Cannon: +16% per enemy (max +80%)']},
@@ -6688,7 +6721,7 @@ const OVERHEAL_SHIELD_PCT = [0,    0.12, 0.12,  0.24, 0.24, 0.36];
 
 const SKILL_CATEGORY = {
   eventHorizon:'bullet',unstableCollapse:'bullet',persistentSingularity:'bullet',gravityAscension:'bullet',
-  pistolRicochet:'bullet',pistolPrecision:'bullet',pistolLastWord:'bullet',
+  pistolRicochet:'bullet',pistolPrecision:'bullet',pistolLastWord:'bullet',pistolAscension:'bullet',
   spread:'bullet', rapidFire:'bullet', pierce:'bullet', explosive:'bullet',
   bounce:'bullet', heavyRounds:'bullet', bulletPower:'bullet', railBurst:'bullet', overclockBarrage:'bullet',
   fireball:'orb',  iceOrb:'orb',  thunderOrb:'orb', poisonOrb:'orb',
@@ -6753,7 +6786,7 @@ const RARITY_INFO = {
 };
 const SKILL_RARITY = {
   eventHorizon:'uncommon', unstableCollapse:'rare', persistentSingularity:'rare', gravityAscension:'divine',
-  pistolRicochet:'uncommon',pistolPrecision:'rare',pistolLastWord:'rare',
+  pistolRicochet:'uncommon',pistolPrecision:'rare',pistolLastWord:'rare',pistolAscension:'divine',
   bulletPower:'common', rapidFire:'common', pierce:'common', orbPower:'common', orbSpeed:'common',
   spellPower:'common', spellHaste:'common', meleePower:'common', meleeReach:'common', meleeHaste:'common', summonHaste:'common',
   spread:'uncommon', explosive:'uncommon', bounce:'uncommon', heavyRounds:'uncommon',
@@ -9296,13 +9329,13 @@ function localAttackModifiers(){
     relicDmg:relicDamageMult(),hollowPoint:playerSkills.hollowPoint||0,
     explosive:playerSkills.explosive||0,heavyRounds:playerSkills.heavyRounds||0,
     bounce:playerSkills.bounce||0,longShot:playerSkills.longShot||0,
-    pistolRicochet:skillPickLevel('pistolRicochet'),pistolPrecision:skillPickLevel('pistolPrecision'),pistolLastWord:skillPickLevel('pistolLastWord'),
+    pistolRicochet:skillPickLevel('pistolRicochet'),pistolPrecision:skillPickLevel('pistolPrecision'),pistolLastWord:skillPickLevel('pistolLastWord'),pistolAscension:!!playerSkills.pistolAscension,
     gravityRadius:skillPickLevel('eventHorizon'),gravityCollapse:skillPickLevel('unstableCollapse'),
     gravityPersistence:skillPickLevel('persistentSingularity'),gravityDivine:!!playerSkills.gravityAscension};
 }
 function sendFireMP(x,z,dx,dz,dmg=25,pierce=0,extra=null){
   if(!mp.connected) return;
-  const msg={type:'FIRE',id:mp.myId,x,z,dx,dz,dmg,pierce,gun:player?.gun||'pistol',grenadeTravel:extra?.grenadeTravel||0,gravityTravel:extra?.gravityTravel,gravityCharge:extra?.gravityCharge,delay:extra?.delay||0,pistolShot:!!extra?.pistolShot,pistolPrimary:!!extra?.pistolPrimary,pistolLast:!!extra?.pistolLast,perm:localAttackModifiers()};
+  const msg={type:'FIRE',id:mp.myId,x,z,dx,dz,dmg,pierce,gun:player?.gun||'pistol',grenadeTravel:extra?.grenadeTravel||0,gravityTravel:extra?.gravityTravel,gravityCharge:extra?.gravityCharge,delay:extra?.delay||0,pistolShot:!!extra?.pistolShot,pistolPrimary:!!extra?.pistolPrimary,pistolLast:!!extra?.pistolLast,pistolJudgment:!!extra?.pistolJudgment,perm:localAttackModifiers()};
   if(mp.isHost) broadcastMP(JSON.stringify(msg));
   else sendToHost(JSON.stringify(msg));
 }
@@ -10424,7 +10457,7 @@ const CARD_ICON_ALIAS = {
   smg:'burst', cryo:'iceOrb', flamethrower:'fireOrb', sniper:'railgun', rpg:'explosive',
   laser:'railgun', minigun:'grenade', boomerang:'boomerang', gravity:'emoji',
   eventHorizon:'emoji',unstableCollapse:'emoji',persistentSingularity:'emoji',gravityAscension:'emoji',
-  pistolRicochet:'emoji',pistolPrecision:'emoji',pistolLastWord:'emoji',
+  pistolRicochet:'emoji',pistolPrecision:'emoji',pistolLastWord:'emoji',pistolAscension:'emoji',
   katana:'katana', dagger:'dagger', axe:'axe', hook:'hook', samurai:'samurai',
   atk:'heavy', heal:'healDrop', hp:'barrier', maxhp:'barrier', maxHp:'barrier', speed:'dash',
   dmg:'heavy', fireRate:'burst', crit:'spread', bossHunter:'heavy', revive:'healDrop',
@@ -11168,17 +11201,20 @@ function handleIncomingMP(msg, fromId){
       if(o) destroyObstacle(o,msg.col||0xffcc33,false);
       break;
     }
+    case 'PISTOL_CHARGE':
+      if(!mp.isHost&&msg.targetId===mp.myId&&playerSkills.pistolAscension)pistolJudgment.hit();
+      break;
     case 'FIRE':
       if(mp.isHost){
         // Pass msg.gun so the host's local render of this remote shot uses
         // the right bullet visual; the host then re-broadcasts the same
         // msg.gun out to peers.
-        fireBullet({x:msg.x,z:msg.z},_scratchDir.set(msg.dx,0,msg.dz),true,msg.dmg||25,msg.pierce||0,false,msg.perm||null,msg.id,msg.gun||'pistol',{grenadeTravel:msg.grenadeTravel||0,gravityTravel:msg.gravityTravel,gravityCharge:msg.gravityCharge,delay:msg.delay||0,pistolShot:!!msg.pistolShot,pistolPrimary:!!msg.pistolPrimary,pistolLast:!!msg.pistolLast});
+        fireBullet({x:msg.x,z:msg.z},_scratchDir.set(msg.dx,0,msg.dz),true,msg.dmg||25,msg.pierce||0,false,msg.perm||null,msg.id,msg.gun||'pistol',{grenadeTravel:msg.grenadeTravel||0,gravityTravel:msg.gravityTravel,gravityCharge:msg.gravityCharge,delay:msg.delay||0,pistolShot:!!msg.pistolShot,pistolPrimary:!!msg.pistolPrimary,pistolLast:!!msg.pistolLast,pistolJudgment:!!msg.pistolJudgment});
         if(!(msg.delay>0)) burst({x:msg.x,z:msg.z},PLAYER_COLORS[msg.id%MAX_PLAYERS].body,isMobile?2:4);
         playRemoteGunSfx(msg.gun||'pistol');
         broadcastMP(JSON.stringify(msg), fromId); // forward to all other clients
       } else if(msg.id !== mp.myId){
-        fireBullet({x:msg.x,z:msg.z},_scratchDir.set(msg.dx,0,msg.dz),true,msg.dmg||25,msg.pierce||0,true,msg.perm||null,msg.id,msg.gun||'pistol',{grenadeTravel:msg.grenadeTravel||0,gravityTravel:msg.gravityTravel,gravityCharge:msg.gravityCharge,delay:msg.delay||0,pistolShot:!!msg.pistolShot,pistolPrimary:!!msg.pistolPrimary,pistolLast:!!msg.pistolLast});
+        fireBullet({x:msg.x,z:msg.z},_scratchDir.set(msg.dx,0,msg.dz),true,msg.dmg||25,msg.pierce||0,true,msg.perm||null,msg.id,msg.gun||'pistol',{grenadeTravel:msg.grenadeTravel||0,gravityTravel:msg.gravityTravel,gravityCharge:msg.gravityCharge,delay:msg.delay||0,pistolShot:!!msg.pistolShot,pistolPrimary:!!msg.pistolPrimary,pistolLast:!!msg.pistolLast,pistolJudgment:!!msg.pistolJudgment});
         if(!(msg.delay>0)) burst({x:msg.x,z:msg.z},PLAYER_COLORS[msg.id%MAX_PLAYERS].body,isMobile?2:4);
         playRemoteGunSfx(msg.gun||'pistol');
       }
@@ -11355,6 +11391,7 @@ function startAsClient(spawnPos,mapLayout=0){
   player._curseHpPct=0;player._curseHpWaves=0;
   runGeneration++;
   pistolPrecision.reset();
+  pistolJudgment.reset();
   runScore.begin();
   // Clear any stale input state from the previous run. If the player held LMB
   // or a movement key when game-over fired, the corresponding browser
@@ -13551,12 +13588,7 @@ window.addEventListener('keydown',e=>{
     // Manual reload — only fires when not already reloading and mag isn't
     // already full. Triggering reload at 0 ammo just starts the timer the
     // same way the auto-reload does.
-    if(player && !player.dead && player.reloadT<=0 && player.ammo<currentMagSize()){
-      player.reloadDur=currentReloadTime();
-      player.reloadT=player.reloadDur;
-      player.ammo=0;
-      sReloadStart();
-    }
+    startManualReload();
     e.preventDefault();
   }
   if(!wasDown&&e.code===NB_KEYBINDS.interact){
@@ -14058,6 +14090,7 @@ function initGame(){
   player._curseHpPct=0;player._curseHpWaves=0;
   runGeneration++;
   pistolPrecision.reset();
+  pistolJudgment.reset();
   runScore.begin();
   // See startAsClient for why: stale mouse/key state from the previous run
   // can lock firing or trigger movement on respawn.
@@ -16138,7 +16171,7 @@ function update(dt){
     // so the reload state advances even if the player isn't holding fire.
     if(player.reloadT>0){
       player.reloadT=Math.max(0,player.reloadT-dt);
-      if(player.reloadT<=0){ player.ammo=currentMagSize(); sReloadEnd(); }
+      if(player.reloadT<=0){ player.ammo=currentMagSize(); if(player.gun==='pistol'&&playerSkills.pistolAscension)pistolJudgment.reload(player.ammo); sReloadEnd(); }
     }
     const rfMult=([1,0.85,0.72,0.60,0.50,0.40][playerSkills.rapidFire||0])||1;
     const fireRateMult=PERM_CD_MULT[persistData.upgrades.fireRate||0]||1;
@@ -16215,7 +16248,7 @@ function update(dt){
     while(!gravityHandled&&activeGun.id!=='railgun'&&wantFire&&player.fireCd<=0&&player.reloadT<=0&&player.ammo>0&&primaryCatchupShots<PRIMARY_FIRE_CATCHUP_MAX){
       primaryCatchupShots++;
       const gun=activeGun;
-      const pistolOpts=gun.id==='pistol'?{pistolShot:true,pistolPrimary:true,pistolLast:player.ammo===1&&!hasRelic('infiniteMag')}:null;
+      const pistolOpts=gun.id==='pistol'?{pistolShot:true,pistolPrimary:true,pistolJudgment:!!playerSkills.pistolAscension&&pistolJudgment.fire(),pistolLast:player.ammo===1&&!hasRelic('infiniteMag')}:null;
       if(!hasRelic('infiniteMag')){
         player.ammo--;
         if(player.ammo<=0){ player.reloadDur=currentReloadTime(); player.reloadT=player.reloadDur; player.minigunSpin=0; sReloadStart(); }
@@ -17280,6 +17313,7 @@ function update(dt){
           const _bDmgAdj=Math.max(1,Math.round(b.dmg*_falloffMult*_pierceMult*_shieldChip));
           const hitDmg=playerDamageAmount(e,_bDmgAdj,b.ownerPerm);
           pistolPrecision.finish(b.pistolShot,true);
+          registerJudgmentHit(b);
           e.hp-=hitDmg; addEnemyStagger(e,0.08); e.hitFlashT=0.12;
           showHitNumber(e,hitDmg,cssHex(bColor),b.ownerId??mp.myId,'bullet');
           impactPulse(b.pos,bColor,0.65,isMobile?3:5);
@@ -17989,6 +18023,7 @@ function loop(now){
   }
   updateAimTrace();
   updateGravityChargeHud();
+  updatePistolJudgmentHud();
   updateMultiplayerPresence(rdt);
   if(gState!=='playing'&&gState!=='shopround'){ updatePlayerNameTags(); updateReloadTag(); }
   sceneView.render();
