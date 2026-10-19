@@ -13,6 +13,7 @@ function rollCrit(sourcePerm){
 
 function playerDamageAmount(enemy, base, sourcePerm=null){
   let dmg=base*(sourcePerm?(sourcePerm.relicDmg||1):relicDamageMult());
+  if(enemy?.type==='rammer'&&enemy.ram?.phase==='crashed')dmg*=1.35;
   const bossLvl=sourcePerm?sourcePerm.bossHunter||0:permLevel('bossHunter');
   if(enemy&&enemy.type==='boss') dmg*=PERM_BOSS_DMG_MULT[bossLvl]||1;
   if(enemy&&sourcePerm?.executionRounds){

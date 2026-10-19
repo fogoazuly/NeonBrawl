@@ -8,6 +8,7 @@ import { ShotgunSalvos, shotgunPattern, RuptureCharge } from './combat/shotgun.j
 const shotgunSalvos=new ShotgunSalvos();
 let shotgunSequence=0;
 const ruptureCharge=new RuptureCharge();
+import { Rammer } from './combat/rammer.js';
 import { createRoomLifecycle } from './multiplayer/rooms.js';
 import { createCollisionSystem } from './combat/collision.js';
 import { createDamageSystem } from './combat/damage.js';
@@ -543,6 +544,7 @@ function rollCrystalDrop(e){
 
 // ── Enemy types ────────────────────────────────────────────
 const ETYPES = {
+  rammer: {hp:110,spd:2.7,r:0.65,col:0xffbb44,emi:0xff6600,pts:45,role:'NEON RAM'},
   chaser:  { hp:42,  spd:4.45, r:0.52, col:0xff2244, emi:0xff1133, pts:10, role:'GRUNT' },
   shooter: { hp:38,  spd:2.15, r:0.48, col:0xff8800, emi:0xff6600, pts:20, role:'RIFLEBOT' },
   tank:    { hp:160, spd:1.75, r:0.72, col:0x6688ff, emi:0x3366ff, pts:50, role:'BULWARK' },
@@ -604,6 +606,7 @@ const WAVES = [
 const RANGED_HELL_TYPES = new Set(['shooter','sniper']);
 function getWaveConfig(w){
   let base=_getWaveConfigBase(w);
+  if(w>=7)base=[...base,['rammer',Math.min(3,1+Math.floor((w-7)/6))]];
   // Bone Tribute (cursed) — enemy spawn count up by the relic's level mult.
   // Applied before challenge-specific filtering so it flows into rangedHell.
   {
@@ -1716,6 +1719,7 @@ const MAX_ENEMIES = 90; // hard cap for late waves with elites
 const ENEMY_GEO = {};
 Object.entries(ETYPES).forEach(([type,cfg])=>{
   switch(type){
+    case 'rammer': ENEMY_GEO[type]=new THREE.BoxGeometry(cfg.r*2.1,.9,cfg.r*2.5); break;
     case 'tank':    ENEMY_GEO[type]=new THREE.BoxGeometry(cfg.r*2.35,1.18,cfg.r*1.95); break;
     case 'shooter': ENEMY_GEO[type]=new THREE.BoxGeometry(cfg.r*1.65,1.02,cfg.r*1.45); break;
     case 'speeder': ENEMY_GEO[type]=new THREE.BoxGeometry(cfg.r*1.35,0.82,cfg.r*1.9); break;
@@ -1898,6 +1902,7 @@ function hideEnemyParts(m){
 function simplifyEnemyRigForTier(p,type){
   if(GFX_ENEMY_RIG_DETAIL>=2 || type==='boss') return;
   const keep = new Set(['body','visor']);
+  if(type==='rammer'){keep.add('head');keep.add('podL');keep.add('podR');}
   if(p.threatHalo?.visible) keep.add('threatHalo');
   if(GFX_ENEMY_RIG_DETAIL===1){
     keep.add('head');
@@ -1985,6 +1990,14 @@ function configureEnemyModel(m,type,cfg){
     p.ring.position.set(0,0.36,0); p.ring.rotation.x=Math.PI/2; p.ring.scale.setScalar(0.95);
     p.eyeL.position.set(-0.11,0.78,0.28); p.eyeR.position.set(0.11,0.78,0.28);
     p.visor.position.set(0,0.78,0.31);
+  } else if(type==='rammer'){
+    p.head.visible=p.armL.visible=p.armR.visible=p.podL.visible=p.podR.visible=true;
+    p.body.scale.set(1.15,.85,1.2);p.body.position.y=.22;
+    p.head.position.set(0,.6,.5);p.head.scale.set(1.3,.55,1);
+    p.armL.position.set(-.65,.2,.35);p.armR.position.set(.65,.2,.35);
+    p.podL.position.set(-.5,.55,.8);p.podR.position.set(.5,.55,.8);
+    p.podL.scale.set(.45,.45,1.5);p.podR.scale.set(.45,.45,1.5);
+    p.eyeL.position.set(-.2,.67,.87);p.eyeR.position.set(.2,.67,.87);p.visor.position.set(0,.68,.9);
   } else if(type==='tank'){
     p.head.visible=p.armL.visible=p.armR.visible=p.ring.visible=p.podL.visible=p.podR.visible=true;
     p.body.position.y=0.24; p.body.scale.set(1.05,0.9,0.95);
@@ -2259,7 +2272,7 @@ function animateEnemyRig(e,dt,now,moveAmt=0){
   for(const key of ENEMY_RIG_KEYS) resetEnemyRigPart(p[key]);
 
   const idx=e.poolIdx||0;
-  const isHeavy=e.type==='tank'||e.type==='boss';
+  const isHeavy=e.type==='tank'||e.type==='boss'||e.type==='rammer';
   const isFast=e.type==='speeder'||e.type==='dasher';
   const moveSpeed=dt>0?moveAmt/dt:0;
   const walk=Math.min(1,moveSpeed/Math.max(0.35,(e.spd||1.1)*(isFast?0.45:0.7)));
@@ -2982,6 +2995,7 @@ function spawnEnemy(type, x, z){
     hitFlashT: 0, spawnAnim: 0.4,
     attackT: 0, attackDur: 0.24, attackSeq: 0,
     chargeT: 0,
+    ram:type==='rammer'?new Rammer():null,
     dashT: 2+Math.random()*2, dashCharge: 0, dashActive: 0, dashDX: 0, dashDZ: 0,
     elitePulseCd: 1.4+Math.random()*1.2,
     eliteCd: 2.6+Math.random()*1.6, // cooldown for the type's signature elite ability
@@ -5372,7 +5386,7 @@ function spawnWarningLine(x,z,ang,len,width=0.7,col=0xff3355,dur=0.65,onDone=nul
   const w=_acquireWarningSlot('line');
   Object.assign(w,{active:true,x,z,width,len,t:0,dur,opacity:0.46,onDone});
   w.mat.color.setHex(col); w.mat.opacity=0.46;
-  w.mesh.rotation.set(Math.PI/2,ang,0);
+  w.mesh.rotation.set(-Math.PI/2,0,ang);
   w.mesh.position.set(x+Math.sin(ang)*len*0.5,0.07,z+Math.cos(ang)*len*0.5);
   w.mesh.scale.set(width,len,1);
   w.mesh.visible=true;
@@ -9180,6 +9194,31 @@ function getSummonHitTarget(x,z,hitR=0.22){
   return best;
 }
 
+function tickRammer(e,dt,tgt){
+  const ram=e.ram;
+  const controlled=!!e.gravitySource||e.stagger>.1;
+  if(e.stagger>0&&(controlled||ram.phase!=='idle'))e.stagger=Math.max(0,e.stagger-dt);
+  return ram.tick(dt,{
+    dx:tgt.x-e.pos.x,dz:tgt.z-e.pos.z,distance:tgt.dist,
+    canStart:e.spawnAnim<=0&&!lineBlockedByObstacle(e.pos.x,e.pos.z,tgt.x,tgt.z,.1),
+    controlled,speed:14*Math.min(1.25,Math.max(1,e.spd/e.cfg.spd))*((slowMap.get(e.poolIdx)||0)>0?.35:1),
+    warn(dx,dz){spawnWarningLine(e.pos.x,e.pos.z,Math.atan2(dx,dz),12,e.cfg.r*2,0xffbb44,.9);enemyAlert(e,'CHARGE',0xffbb44);},
+    crash(){enemyAlert(e,'EXPOSED',0xffffff);impactPulse(e.pos,0xffbb44,1.5,isMobile?4:8);},
+    move(dx,dz,distance){
+      let moved=0;
+      while(moved<distance-.0001){
+        const step=Math.min(.12,distance-moved),x=e.pos.x+dx*step,z=e.pos.z+dz*step;
+        if(isBlockedAt(x,z,e.cfg.r))return {distance:moved,blocked:true};
+        e.pos.x=x;e.pos.z=z;moved+=step;
+        const target=getEnemyTarget(x,z),key=target?.isSummon?target.summonRef:target?.id;
+        if(target&&target.dist<e.cfg.r+(target.radius||.6)&&!ram.hit.has(key)&&!lineBlockedByObstacle(x,z,target.x,target.z,.05)){
+          ram.hit.add(key);dealDmgToTarget(target,Math.round(24*e.dmgMult));triggerEnemyAttack(e,.2);
+        }
+      }
+      return {distance:moved,blocked:false};
+    }
+  });
+}
 function getEnemyTarget(ex, ez){
   let best = getNearestPlayer(ex, ez);
   // Mobile allies are valid targets too. Repair drones are fragile but can draw fire
@@ -9239,6 +9278,7 @@ function applyHostEnemyState(data){
       e.mesh.material.emissiveIntensity=0.38*(ed.hp/(ed.maxHp||e.cfg.hp))+0.16;
       if(e.mesh.scale.x<0.5) e.mesh.scale.setScalar(1);
     }
+    if(e.type==='rammer')e.ram={phase:ed.ramPhase||'idle',dx:ed.ramDX||0,dz:ed.ramDZ||1};
   }
 }
 
@@ -9294,11 +9334,13 @@ function sendHostState(){
           if(vmag>14){ vx=vx*14/vmag; vz=vz*14/vmag; }
         }
       }
+      if(e.type==='rammer'&&e.ram.phase!=='idle'&&e.ram.phase!=='rush'){vx=0;vz=0;}
       e._lastSendX=e.pos.x; e._lastSendZ=e.pos.z; e._lastSendT=_nowMs;
       return {
         pidx:e.poolIdx,x:Math.round(e.pos.x*100)/100,z:Math.round(e.pos.z*100)/100,
         vx:Math.round(vx*100)/100,vz:Math.round(vz*100)/100,
         type:e.type,hp:e.hp,maxHp:e.maxHp,elite:e.elite||null,eliteName:e.eliteName||'',bossName:e.bossName||'',
+        ramPhase:e.ram?.phase,ramDX:e.ram?.dx,ramDZ:e.ram?.dz,
         atq:e.attackSeq||0,atd:Math.round((e.attackDur||0.24)*100)/100,
       };
     }),
@@ -16567,6 +16609,8 @@ function update(dt){
       const dist=tgt.dist;
       e._lastDist=dist;
 
+      const ramHandled=e.type==='rammer'&&tickRammer(e,dt,tgt);
+      if(!ramHandled){
       let desiredX=0,desiredZ=0;
       if(e.stagger>0){ e.stagger-=dt; }
       else{
@@ -16578,7 +16622,10 @@ function update(dt){
           navX=ok?fx:(dist>0.01?dx/dist:0); navZ=ok?fz:(dist>0.01?dz/dist:0);
         }
 
-        if(e.type==='chaser'||e.type==='tank'||e.type==='bomber'||e.type==='boss'||e.type==='shieldBearer'||e.type==='splitter'||e.type==='splitterling'||e.type==='berserker'){
+        if(e.type==='rammer'){
+          desiredX=dist<2?(dist>.01?-dx/dist:-Math.sin(e.mesh.rotation.y)):navX;
+          desiredZ=dist<2?(dist>.01?-dz/dist:-Math.cos(e.mesh.rotation.y)):navZ;
+        } else if(e.type==='chaser'||e.type==='tank'||e.type==='bomber'||e.type==='boss'||e.type==='shieldBearer'||e.type==='splitter'||e.type==='splitterling'||e.type==='berserker'){
           // Shield Bearer behaves like a tank/chaser — pushes straight toward
           // the player so its forward shield arc points at the threat.
           // Splitter / splitterling / berserker are also straight melee rushers.
@@ -16699,10 +16746,12 @@ function update(dt){
       }
 
       } // Global singularities own movement, including passage through walls.
+      } // Rammer wind-up, rush and recovery own their movement.
       const moveAmt=Math.hypot(e.pos.x-e.mesh.position.x,e.pos.z-e.mesh.position.z);
       e.mesh.position.x=e.pos.x; e.mesh.position.z=e.pos.z;
       e.mesh.position.y=0.55+Math.sin(now*0.005+i)*0.05;
-      if(dist>0.01){
+      if(e.type==='rammer'&&ramHandled)e.mesh.rotation.y=Math.atan2(e.ram.dx,e.ram.dz);
+      else if(dist>0.01){
         const turnRate=e.type==='boss'?4.5:e.type==='tank'?5.5:e.type==='sniper'?6.5:9;
         e.mesh.rotation.y=angleLerp(e.mesh.rotation.y,Math.atan2(dx,dz),1-Math.exp(-turnRate*dt));
       }
@@ -16711,6 +16760,8 @@ function update(dt){
       const _ff=e.hitFlashT>0 ? e.hitFlashT/0.12 : 0;
       let _ei=0.45*(e.hp/e.maxHp)+0.18+_ff*1.35;
       if(e.elite) _ei+=0.18;
+      if(e.type==='rammer'&&e.ram.phase==='windup')_ei+=1.5*(1-e.ram.timer/.9);
+      if(e.type==='rammer'&&e.ram.phase==='crashed')_ei+=.8;
       if(e.type==='berserker') _ei+=(1-Math.max(0,Math.min(1,e.hp/e.maxHp)))*0.9; // glows hotter while enraged
       if(e.type==='bomber'&&dist<4) _ei+=0.35+Math.max(0,Math.sin(now*0.014))*0.45; // danger pulse
       if(e.type==='sniper'&&e.chargeT>0) _ei+=1.4*(1-e.chargeT/0.65);  // charge-up glow
@@ -16726,6 +16777,7 @@ function update(dt){
         e.mesh.scale.setScalar(Math.max(0.001,_sc)*(e.sizeMult||1));
       } else { const _s=e.sizeMult||1; if(Math.abs(e.mesh.scale.x-_s)>1e-3) e.mesh.scale.setScalar(_s); }
 
+      if(e.type==='rammer')continue; // Rammer damage is handled by its swept charge.
       // ── Attacks ──
       // Difficulty scales attack RATE by stretching the cooldown's countdown:
       // a smaller cd (hell) makes fdt larger so fireCd hits 0 sooner = more
@@ -17105,7 +17157,8 @@ function update(dt){
       e.mesh.position.x=e.pos.x;
       e.mesh.position.z=e.pos.z;
       e.mesh.position.y=0.55+Math.sin(now*0.005+i)*0.05;
-      if(moveAmt>0.002){
+      if(e.type==='rammer'&&e.ram?.phase!=='idle')e.mesh.rotation.y=Math.atan2(e.ram?.dx||0,e.ram?.dz||1);
+      else if(moveAmt>0.002){
         const goal=Math.atan2(moveDx,moveDz);
         e.mesh.rotation.y=angleLerp(e.mesh.rotation.y,goal,1-Math.exp(-8*dt));
       }
