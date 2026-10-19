@@ -4,9 +4,10 @@ import { PrecisionStreak, lastWordBonus, NeonJudgment } from './combat/pistol.js
 setupLeaderboard();
 const pistolPrecision = new PrecisionStreak();
 const pistolJudgment = new NeonJudgment();
-import { ShotgunSalvos, shotgunPattern } from './combat/shotgun.js';
+import { ShotgunSalvos, shotgunPattern, RuptureCharge } from './combat/shotgun.js';
 const shotgunSalvos=new ShotgunSalvos();
 let shotgunSequence=0;
+const ruptureCharge=new RuptureCharge();
 import { createRoomLifecycle } from './multiplayer/rooms.js';
 import { createCollisionSystem } from './combat/collision.js';
 import { createDamageSystem } from './combat/damage.js';
@@ -4660,6 +4661,7 @@ function fireBullet(pos, dir, isPlayer, dmg, pierce=0, visualOnly=false, ownerPe
   slot.spd=isPlayer?BULLET_SPD:ENEMY_BULLET_SPD; slot.life=isPlayer?2.2:2.9; slot.dmg=dmg; slot.pierce=pierce; slot.ownerPerm=ownerPerm; slot.ownerId=isPlayer?ownerId:null;
   slot.pistolShot=null; slot.pistolRicochet=0; slot.judgmentCharge=false;
   slot.shotgunSalvo=isPlayer&&gunCfg?.id==='shotgun'&&typeof bulletOpts?.shotgunSalvo==='string'&&!visualOnly&&(mp.soloMode||mp.isHost)?shotgunSalvos.acquire(ownerId,bulletOpts.shotgunSalvo):null;
+  slot.ruptureCharging=!!(slot.shotgunSalvo&&ownerPerm?.shotgunAscension&&!bulletOpts?.rupture);
   slot.bounceLeft=isPlayer ? BOUNCE_MAX[ownerPerm?.bounce ?? (playerSkills.bounce||0)] : 0;
   slot.mesh.rotation.x=0;
   slot.bulletKind='bullet'; slot.hitR=0.22; slot.explodeR=0; slot.explodeMult=0; slot.boomerang=false; slot.returning=false; slot.pierceHits=0;
@@ -4776,7 +4778,7 @@ function fireBullet(pos, dir, isPlayer, dmg, pierce=0, visualOnly=false, ownerPe
 }
 function releaseBullet(slot){
   if(slot.active)pistolPrecision.finish(slot.pistolShot,false);
-  shotgunSalvos.release(slot.shotgunSalvo);slot.shotgunSalvo=null;
+  shotgunSalvos.release(slot.shotgunSalvo);slot.shotgunSalvo=null;slot.ruptureCharging=false;
   slot.pistolShot=null;slot.pistolRicochet=0;slot.judgmentCharge=false;
   if(slot.gravityRing) slot.gravityRing.visible=false;
   slot.active=false; slot.mesh.visible=false; slot.mesh.scale.setScalar(1);
@@ -4907,6 +4909,30 @@ function updateGravityAscension(dt,wantFire,cooldownMult=1){
     player.gravityCharge=0;player.gravityChargeLatch=full&&wantFire;
   }
   return true;
+}
+let ruptureHud=null;
+function updateRuptureHud(){
+  if(!ruptureHud){ruptureHud=document.createElement('div');ruptureHud.id='ruptureHud';document.body.appendChild(ruptureHud);}
+  const active=gState==='playing'&&!player.dead&&player.gun==='shotgun'&&playerSkills.shotgunAscension;
+  ruptureHud.style.display=active?'block':'none';
+  ruptureHud.textContent=ruptureCharge.ready?'RUPTURE • READY — NEXT SHOT RELEASES SHOCKWAVE':'RUPTURE • '+ruptureCharge.hits+' / 8 close-range hits';
+}
+function fireRupture(x,z,dx,dz,dmg,ownerId,perm,visualOnly=false){
+  if(![x,z,dx,dz,dmg].every(Number.isFinite))return;
+  const length=Math.hypot(dx,dz);if(length<.001)return;dx/=length;dz/=length;
+  if(spendVfxBudget('shockwaves')){
+    const sw=_acquireShockwaveSlot();sw.active=true;sw.maxR=10;sw.t=0;sw.dur=.35;sw.opacity=.9;sw.spin=0;
+    sw.mesh.geometry=_ruptureWaveGeo;sw.mesh.rotation.z=-Math.atan2(dz,dx);
+    sw.mat.color.setHex(0xffcc88);sw.mat.opacity=.9;sw.mesh.position.set(x,.1,z);sw.mesh.scale.setScalar(1.2);sw.mesh.visible=true;shockwaves.push(sw);
+  }
+  if(!visualOnly){
+    for(let i=enemies.length-1;i>=0;i--){
+      const e=enemies[i];if(e.dead)continue;
+      const ex=e.pos.x-x,ez=e.pos.z-z,d=Math.hypot(ex,ez);
+      if(d>10+e.cfg.r||(ex*dx+ez*dz)/(d||1)<Math.cos(.6)||lineBlockedByObstacle(x,z,e.pos.x,e.pos.z,.1))continue;
+      damageEnemyWithSource(i,dmg,0xffcc88,.4,ownerId,perm,'bullet');
+    }
+  }
 }
 function startManualReload(){
   if(gState!=='playing'||nbPaused||!player||player.dead||player.reloadT>0)return;
@@ -5266,6 +5292,7 @@ function spawnHomingBomb(pos,dmg,explR){
 const shockwaves = [];
 const _shockwavePool = [];
 const _shockwaveGeo = new THREE.RingGeometry(0.05, 0.24, isMobile?20:32);
+const _ruptureWaveGeo=new THREE.RingGeometry(.90,1,isMobile?24:48,1,-.6,1.2);
 function _makeShockwaveSlot(){
   const mat = new THREE.MeshBasicMaterial({color:0xff8800,transparent:true,opacity:0,side:THREE.DoubleSide,depthWrite:false,blending:THREE.AdditiveBlending});
   const mesh = new THREE.Mesh(_shockwaveGeo, mat);
@@ -5287,6 +5314,7 @@ function _releaseShockwaveSlot(sw){ sw.active=false; sw.mesh.visible=false; sw.m
 function spawnShockwave(x, z, maxR, col=0xff8800, dur=0.30, opacity=0.9){
   if(!spendVfxBudget('shockwaves')) return null;
   const sw=_acquireShockwaveSlot();
+  sw.mesh.geometry=_shockwaveGeo;
   sw.active=true; sw.maxR=maxR; sw.t=0; sw.dur=dur; sw.opacity=opacity;
   sw.spin=(Math.random()<0.5?-1:1)*(0.8+Math.random()*1.4);
   sw.mat.color.setHex(col); sw.mat.opacity=opacity;
@@ -6527,6 +6555,7 @@ function crystalPowerMult(){
 function atkScale(){ return (playerStats.attackDmg/25)*crystalPowerMult(); }
 
 const SKILL_DEFS = {
+  shotgunAscension:{name:'Rupture',icon:'🌋',requiresGun:'shotgun',desc:['','','','','','Hit at close range with 8 blasts. Next shot also releases a 10m frontal shockwave: 12× pellet damage and 0.4s stagger. Walls block it. Pellets keep all card bonuses; the empowered blast cannot recharge Rupture.']},
   shotgunImpact:{name:'Brutal Impact',icon:'💥',requiresGun:'shotgun',desc:['','Within 3m of muzzle: push enemies 0.45m and stagger 0.12s, once per target per blast. Bosses and elites resist.','','Push 0.65m and stagger 0.18s','','Push 0.85m and stagger 0.24s']},
   shotgunRain:{name:'Lead Rain',icon:'🌧️',requiresGun:'shotgun',desc:['','Shotgun: +2 pellets, +10% dispersion','Shotgun: +4 pellets, +20% dispersion','','Shotgun: +6 pellets, +30% dispersion','Shotgun: +8 pellets, +40% dispersion']},
   shotgunFocus:{name:'Point Blank',icon:'🎯',requiresGun:'shotgun',desc:['','Each pellet hitting the same target adds +4% damage to later pellets in that blast (max +32%).','','+6% per earlier hit (max +48%)','','+8% per earlier hit (max +64%)']},
@@ -6727,7 +6756,7 @@ const OVERHEAL_SHIELD_PCT = [0,    0.12, 0.12,  0.24, 0.24, 0.36];
 
 const SKILL_CATEGORY = {
   eventHorizon:'bullet',unstableCollapse:'bullet',persistentSingularity:'bullet',gravityAscension:'bullet',
-  pistolRicochet:'bullet',pistolPrecision:'bullet',pistolLastWord:'bullet',pistolAscension:'bullet',shotgunImpact:'bullet',shotgunRain:'bullet',shotgunFocus:'bullet',
+  pistolRicochet:'bullet',pistolPrecision:'bullet',pistolLastWord:'bullet',pistolAscension:'bullet',shotgunImpact:'bullet',shotgunRain:'bullet',shotgunFocus:'bullet',shotgunAscension:'bullet',
   spread:'bullet', rapidFire:'bullet', pierce:'bullet', explosive:'bullet',
   bounce:'bullet', heavyRounds:'bullet', bulletPower:'bullet', railBurst:'bullet', overclockBarrage:'bullet',
   fireball:'orb',  iceOrb:'orb',  thunderOrb:'orb', poisonOrb:'orb',
@@ -6792,7 +6821,7 @@ const RARITY_INFO = {
 };
 const SKILL_RARITY = {
   eventHorizon:'uncommon', unstableCollapse:'rare', persistentSingularity:'rare', gravityAscension:'divine',
-  pistolRicochet:'uncommon',pistolPrecision:'rare',pistolLastWord:'rare',pistolAscension:'divine',shotgunImpact:'rare',shotgunRain:'uncommon',shotgunFocus:'rare',
+  pistolRicochet:'uncommon',pistolPrecision:'rare',pistolLastWord:'rare',pistolAscension:'divine',shotgunImpact:'rare',shotgunRain:'uncommon',shotgunFocus:'rare',shotgunAscension:'divine',
   bulletPower:'common', rapidFire:'common', pierce:'common', orbPower:'common', orbSpeed:'common',
   spellPower:'common', spellHaste:'common', meleePower:'common', meleeReach:'common', meleeHaste:'common', summonHaste:'common',
   spread:'uncommon', explosive:'uncommon', bounce:'uncommon', heavyRounds:'uncommon',
@@ -9335,13 +9364,13 @@ function localAttackModifiers(){
     relicDmg:relicDamageMult(),hollowPoint:playerSkills.hollowPoint||0,
     explosive:playerSkills.explosive||0,heavyRounds:playerSkills.heavyRounds||0,
     bounce:playerSkills.bounce||0,longShot:playerSkills.longShot||0,
-    pistolRicochet:skillPickLevel('pistolRicochet'),pistolPrecision:skillPickLevel('pistolPrecision'),pistolLastWord:skillPickLevel('pistolLastWord'),pistolAscension:!!playerSkills.pistolAscension,shotgunImpact:skillPickLevel('shotgunImpact'),shotgunFocus:skillPickLevel('shotgunFocus'),
+    pistolRicochet:skillPickLevel('pistolRicochet'),pistolPrecision:skillPickLevel('pistolPrecision'),pistolLastWord:skillPickLevel('pistolLastWord'),pistolAscension:!!playerSkills.pistolAscension,shotgunImpact:skillPickLevel('shotgunImpact'),shotgunFocus:skillPickLevel('shotgunFocus'),shotgunAscension:!!playerSkills.shotgunAscension,
     gravityRadius:skillPickLevel('eventHorizon'),gravityCollapse:skillPickLevel('unstableCollapse'),
     gravityPersistence:skillPickLevel('persistentSingularity'),gravityDivine:!!playerSkills.gravityAscension};
 }
 function sendFireMP(x,z,dx,dz,dmg=25,pierce=0,extra=null){
   if(!mp.connected) return;
-  const msg={type:'FIRE',id:mp.myId,x,z,dx,dz,dmg,pierce,gun:player?.gun||'pistol',grenadeTravel:extra?.grenadeTravel||0,gravityTravel:extra?.gravityTravel,gravityCharge:extra?.gravityCharge,delay:extra?.delay||0,pistolShot:!!extra?.pistolShot,pistolPrimary:!!extra?.pistolPrimary,pistolLast:!!extra?.pistolLast,pistolJudgment:!!extra?.pistolJudgment,shotgunSalvo:extra?.shotgunSalvo,perm:localAttackModifiers()};
+  const msg={type:'FIRE',id:mp.myId,x,z,dx,dz,dmg,pierce,gun:player?.gun||'pistol',grenadeTravel:extra?.grenadeTravel||0,gravityTravel:extra?.gravityTravel,gravityCharge:extra?.gravityCharge,delay:extra?.delay||0,pistolShot:!!extra?.pistolShot,pistolPrimary:!!extra?.pistolPrimary,pistolLast:!!extra?.pistolLast,pistolJudgment:!!extra?.pistolJudgment,shotgunSalvo:extra?.shotgunSalvo,rupture:!!extra?.rupture,perm:localAttackModifiers()};
   if(mp.isHost) broadcastMP(JSON.stringify(msg));
   else sendToHost(JSON.stringify(msg));
 }
@@ -10463,7 +10492,7 @@ const CARD_ICON_ALIAS = {
   smg:'burst', cryo:'iceOrb', flamethrower:'fireOrb', sniper:'railgun', rpg:'explosive',
   laser:'railgun', minigun:'grenade', boomerang:'boomerang', gravity:'emoji',
   eventHorizon:'emoji',unstableCollapse:'emoji',persistentSingularity:'emoji',gravityAscension:'emoji',
-  pistolRicochet:'emoji',pistolPrecision:'emoji',pistolLastWord:'emoji',pistolAscension:'emoji',shotgunImpact:'emoji',shotgunRain:'emoji',shotgunFocus:'emoji',
+  pistolRicochet:'emoji',pistolPrecision:'emoji',pistolLastWord:'emoji',pistolAscension:'emoji',shotgunImpact:'emoji',shotgunRain:'emoji',shotgunFocus:'emoji',shotgunAscension:'emoji',
   katana:'katana', dagger:'dagger', axe:'axe', hook:'hook', samurai:'samurai',
   atk:'heavy', heal:'healDrop', hp:'barrier', maxhp:'barrier', maxHp:'barrier', speed:'dash',
   dmg:'heavy', fireRate:'burst', crit:'spread', bossHunter:'heavy', revive:'healDrop',
@@ -11207,6 +11236,15 @@ function handleIncomingMP(msg, fromId){
       if(o) destroyObstacle(o,msg.col||0xffcc33,false);
       break;
     }
+    case 'RUPTURE_CHARGE':
+      if(!mp.isHost&&msg.targetId===mp.myId&&playerSkills.shotgunAscension)ruptureCharge.hit();
+      break;
+    case 'RUPTURE':
+      if(msg.perm?.shotgunAscension){
+        if(mp.isHost){fireRupture(msg.x,msg.z,msg.dx,msg.dz,msg.dmg,msg.id,msg.perm,false);broadcastMP(msg,fromId);}
+        else if(msg.id!==mp.myId)fireRupture(msg.x,msg.z,msg.dx,msg.dz,msg.dmg,msg.id,msg.perm,true);
+      }
+      break;
     case 'PISTOL_CHARGE':
       if(!mp.isHost&&msg.targetId===mp.myId&&playerSkills.pistolAscension)pistolJudgment.hit();
       break;
@@ -11215,12 +11253,12 @@ function handleIncomingMP(msg, fromId){
         // Pass msg.gun so the host's local render of this remote shot uses
         // the right bullet visual; the host then re-broadcasts the same
         // msg.gun out to peers.
-        fireBullet({x:msg.x,z:msg.z},_scratchDir.set(msg.dx,0,msg.dz),true,msg.dmg||25,msg.pierce||0,false,msg.perm||null,msg.id,msg.gun||'pistol',{grenadeTravel:msg.grenadeTravel||0,gravityTravel:msg.gravityTravel,gravityCharge:msg.gravityCharge,delay:msg.delay||0,pistolShot:!!msg.pistolShot,pistolPrimary:!!msg.pistolPrimary,pistolLast:!!msg.pistolLast,pistolJudgment:!!msg.pistolJudgment,shotgunSalvo:typeof msg.shotgunSalvo==='string'?msg.shotgunSalvo.slice(0,64):undefined});
+        fireBullet({x:msg.x,z:msg.z},_scratchDir.set(msg.dx,0,msg.dz),true,msg.dmg||25,msg.pierce||0,false,msg.perm||null,msg.id,msg.gun||'pistol',{grenadeTravel:msg.grenadeTravel||0,gravityTravel:msg.gravityTravel,gravityCharge:msg.gravityCharge,delay:msg.delay||0,pistolShot:!!msg.pistolShot,pistolPrimary:!!msg.pistolPrimary,pistolLast:!!msg.pistolLast,pistolJudgment:!!msg.pistolJudgment,shotgunSalvo:typeof msg.shotgunSalvo==='string'?msg.shotgunSalvo.slice(0,64):undefined,rupture:!!msg.rupture});
         if(!(msg.delay>0)) burst({x:msg.x,z:msg.z},PLAYER_COLORS[msg.id%MAX_PLAYERS].body,isMobile?2:4);
         playRemoteGunSfx(msg.gun||'pistol');
         broadcastMP(JSON.stringify(msg), fromId); // forward to all other clients
       } else if(msg.id !== mp.myId){
-        fireBullet({x:msg.x,z:msg.z},_scratchDir.set(msg.dx,0,msg.dz),true,msg.dmg||25,msg.pierce||0,true,msg.perm||null,msg.id,msg.gun||'pistol',{grenadeTravel:msg.grenadeTravel||0,gravityTravel:msg.gravityTravel,gravityCharge:msg.gravityCharge,delay:msg.delay||0,pistolShot:!!msg.pistolShot,pistolPrimary:!!msg.pistolPrimary,pistolLast:!!msg.pistolLast,pistolJudgment:!!msg.pistolJudgment,shotgunSalvo:typeof msg.shotgunSalvo==='string'?msg.shotgunSalvo.slice(0,64):undefined});
+        fireBullet({x:msg.x,z:msg.z},_scratchDir.set(msg.dx,0,msg.dz),true,msg.dmg||25,msg.pierce||0,true,msg.perm||null,msg.id,msg.gun||'pistol',{grenadeTravel:msg.grenadeTravel||0,gravityTravel:msg.gravityTravel,gravityCharge:msg.gravityCharge,delay:msg.delay||0,pistolShot:!!msg.pistolShot,pistolPrimary:!!msg.pistolPrimary,pistolLast:!!msg.pistolLast,pistolJudgment:!!msg.pistolJudgment,shotgunSalvo:typeof msg.shotgunSalvo==='string'?msg.shotgunSalvo.slice(0,64):undefined,rupture:!!msg.rupture});
         if(!(msg.delay>0)) burst({x:msg.x,z:msg.z},PLAYER_COLORS[msg.id%MAX_PLAYERS].body,isMobile?2:4);
         playRemoteGunSfx(msg.gun||'pistol');
       }
@@ -11399,6 +11437,7 @@ function startAsClient(spawnPos,mapLayout=0){
   pistolPrecision.reset();
   pistolJudgment.reset();
   shotgunSalvos.reset();
+  ruptureCharge.reset();
   runScore.begin();
   // Clear any stale input state from the previous run. If the player held LMB
   // or a movement key when game-over fired, the corresponding browser
@@ -14099,6 +14138,7 @@ function initGame(){
   pistolPrecision.reset();
   pistolJudgment.reset();
   shotgunSalvos.reset();
+  ruptureCharge.reset();
   runScore.begin();
   // See startAsClient for why: stale mouse/key state from the previous run
   // can lock firing or trigger movement on respawn.
@@ -16291,6 +16331,11 @@ function update(dt){
         // shotguns deal small per-pellet damage but stack via 12 pellets.
         const pdmgBase=playerStats.attackDmg*BULLET_PWR_MULT[playerSkills.bulletPower||0]*crystalPowerMult()*gun.dmgMult;
         const pdmg=Math.max(1,Math.round(pdmgBase));
+        if(shotgunOpts&&playerSkills.shotgunAscension&&ruptureCharge.fire()){
+          shotgunOpts.rupture=true;
+          fireRupture(player.pos.x,player.pos.z,fx,fz,pdmg*12,mp.myId,localAttackModifiers(),!(mp.soloMode||mp.isHost));
+          if(mp.connected){const msg={type:'RUPTURE',id:mp.myId,x:player.pos.x,z:player.pos.z,dx:fx,dz:fz,dmg:pdmg*12,perm:localAttackModifiers()};if(mp.isHost)broadcastMP(msg);else sendToHost(msg);}
+        }
         const pierceLvl=playerSkills.pierce||0;
         const isSpecialGun=gun.kind==='flame'||gun.kind==='laser'||gun.kind==='cryo';
         if(isSpecialGun){
@@ -17321,6 +17366,10 @@ function update(dt){
           }
           const _pierceMult=pierceFalloffMult(b.pierceHits||0);
           const _bDmgAdj=Math.max(1,Math.round(b.dmg*_falloffMult*_pierceMult*_shieldChip));
+          if(b.ruptureCharging&&shotgunSalvos.charge(b.shotgunSalvo,Math.hypot(b.pos.x-b.fallOX,b.pos.z-b.fallOZ)<=3)){
+            if(b.ownerId===mp.myId)ruptureCharge.hit();
+            else if(mp.isHost){const conn=mp.conns.get(b.ownerId);if(conn?.open)conn.send(JSON.stringify({type:'RUPTURE_CHARGE',targetId:b.ownerId}));}
+          }
           const shotgunHit=shotgunSalvos.hit(b.shotgunSalvo,e,b.ownerPerm?.shotgunFocus,b.ownerPerm?.shotgunImpact,Math.hypot(b.pos.x-b.fallOX,b.pos.z-b.fallOZ)<=3);
           const hitDmg=playerDamageAmount(e,Math.max(1,Math.round(_bDmgAdj*shotgunHit.damage)),b.ownerPerm);
           if(shotgunHit.stagger){
@@ -18043,6 +18092,7 @@ function loop(now){
   updateAimTrace();
   updateGravityChargeHud();
   updatePistolJudgmentHud();
+  updateRuptureHud();
   updateMultiplayerPresence(rdt);
   if(gState!=='playing'&&gState!=='shopround'){ updatePlayerNameTags(); updateReloadTag(); }
   sceneView.render();

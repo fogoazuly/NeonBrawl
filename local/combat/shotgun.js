@@ -4,6 +4,14 @@ export function shotgunPattern(level) {
   return {pellets:12+2*n,spread:0.34*(1+0.1*n)};
 }
 
+export class RuptureCharge {
+  constructor(){this.reset();}
+  reset(){this.hits=0;}
+  get ready(){return this.hits>=8;}
+  hit(){this.hits=Math.min(8,this.hits+1);}
+  fire(){if(!this.ready)return false;this.reset();return true;}
+}
+
 // Groups live only while their projectiles do; owners never share hit counters.
 export class ShotgunSalvos {
   constructor(){this.groups=new Map();}
@@ -16,6 +24,10 @@ export class ShotgunSalvos {
   }
   release(group){
     if(group&&--group.refs<=0&&this.groups.get(group.key)===group)this.groups.delete(group.key);
+  }
+  charge(group,close){
+    if(!close||!group||group.charged||this.groups.get(group.key)!==group)return false;
+    group.charged=true;return true;
   }
   hit(group,target,focus,impact,close){
     if(!group||this.groups.get(group.key)!==group)return {damage:1,stagger:0,push:0};

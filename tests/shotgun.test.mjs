@@ -1,6 +1,19 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {ShotgunSalvos,shotgunPattern} from '../local/combat/shotgun.js';
+import {ShotgunSalvos,shotgunPattern,RuptureCharge} from '../local/combat/shotgun.js';
+test('rupture charges once per close blast, requires eight hits, consumes and resets',()=>{
+  const meter=new RuptureCharge(),salvos=new ShotgunSalvos();
+  for(let i=0;i<8;i++){
+    const group=salvos.acquire(0,String(i));
+    assert.equal(salvos.charge(group,false),false);
+    if(salvos.charge(group,true))meter.hit();
+    assert.equal(salvos.charge(group,true),false);
+    if(i<7)assert.equal(meter.fire(),false);
+  }
+  assert.equal(meter.ready,true);meter.hit();assert.equal(meter.hits,8);
+  assert.equal(meter.fire(),true);assert.equal(meter.fire(),false);
+  meter.hit();meter.reset();assert.equal(meter.hits,0);
+});
 test('lead rain adds bounded pellet count and widens dispersion',()=>{
   assert.deepEqual(shotgunPattern(0),{pellets:12,spread:.34});
   assert.equal(shotgunPattern(1).pellets,14);
