@@ -948,7 +948,17 @@ const EARLY_PRESETS = [
       {x:0,    z:12,  w:24, d:0.8},  // bottom edge (full width)
     ]},
 ];
-const ARENA_PRESETS = [...LEGACY_PRESETS,...EXTRA_NORMAL_PRESETS,...EARLY_PRESETS,SHOP_PRESET,...BOSS_PRESETS];
+const CRYSTAL_GARDEN_PRESET={
+  id:'enc_crystal_garden',type:'normal',name:'CRYSTAL GARDEN',color:0xbb77ff,
+  theme:{wall:0x170c24,strip:0xbb77ff,floor:0x070e16,gridA:0x241238,gridB:0x101824},
+  floors:[Q(0,0,4,24,{col:0x66ffdd,opacity:.10}),R(0,0,8,{col:0x663399,opacity:.10}),
+    ...[-4.5,4.5].flatMap(x=>[-5,0,5].map(z=>R(x,z,2,{col:0xcc88ff,opacity:.18})))],
+  blocks:[...[-4.5,4.5].flatMap(x=>[-5,0,5].map(z=>B(2.4,2.8,3,x,z,{crystal:true,destructible:true,breakable:true,hp:90}))),
+    ...[-9,9].flatMap(x=>[-8,8].map(z=>B(1.5,1.4,1.5,x,z,{rock:true})))],
+  hazards:[]
+};
+// Append new arenas so existing multiplayer map indices remain stable.
+const ARENA_PRESETS = [...LEGACY_PRESETS,...EXTRA_NORMAL_PRESETS,...EARLY_PRESETS,SHOP_PRESET,...BOSS_PRESETS,CRYSTAL_GARDEN_PRESET];
 const NORMAL_PRESET_IDS = ARENA_PRESETS.map((p,i)=>p.type==='normal'?i:null).filter(i=>i!==null);
 const SHOP_PRESET_ID = ARENA_PRESETS.findIndex(p=>p.id==='shop_floor');
 const BOSS_PRESET_BY_NAME = Object.fromEntries(ARENA_PRESETS.map((p,i)=>p.type==='boss'?[p.boss,i]:null).filter(Boolean));
@@ -1371,19 +1381,26 @@ function changeMapLayout(layoutIdx){
     const {w,h,d,x,z}=Array.isArray(block)?{w:block[0],h:block[1],d:block[2],x:block[3],z:block[4]}:block;
     const isBreakable=!!block.destructible&&(preset.type==='boss'||block.breakable);
     const blockMat=isBreakable?_breakMat:block.bridge?_bridgeMat:block.rock?_rockMat:block.cover?_coverMat:mat;
-    const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),blockMat);
+    const geometry=block.crystal?new THREE.OctahedronGeometry(1).scale(w/2,h/2,d/2):new THREE.BoxGeometry(w,h,d);
+    const m=new THREE.Mesh(geometry,blockMat);
     m.position.set(x,h/2,z); m.castShadow=true; m.receiveShadow=true; scene.add(m);
     m.updateMatrix(); m.matrixAutoUpdate=false;
     if(isBreakable){
       m.material=blockMat.clone();
       m.userData.ownsMaterial=true;
       m.material.emissiveIntensity=block.cover?0.45:block.bridge?0.26:0.32;
+      if(block.crystal){
+        m.material.color.setHex(0xbb88ee);m.material.emissive.setHex(0x9944ff);
+        m.material.emissiveIntensity=.65;m.material.roughness=.25;
+      }
+      if(!block.crystal){
       const mark=new THREE.Mesh(new THREE.BoxGeometry(Math.max(0.35,w*0.76),0.055,Math.max(0.35,d*0.76)),_breakMarkMat);
       mark.position.y=h/2+0.045;
       m.add(mark);
+      }
     }
     obstacleObjects.push(m);
-    obstacleBoxes.push({x,z,hw:w/2,hd:d/2,destructible:isBreakable,hp:block.hp||120,maxHp:block.hp||120,mesh:m});
+    obstacleBoxes.push({x,z,hw:w/2,hd:d/2,crystal:!!block.crystal,destructible:isBreakable,hp:block.hp||120,maxHp:block.hp||120,mesh:m});
   });
   (preset.hazards||[]).forEach(h=>{
     const kind=h.type==='grass'?'grass':h.type==='slow'?'water':'damage';
@@ -1406,6 +1423,7 @@ function changeMapLayout(layoutIdx){
 // ── Player ────────────────────────────────────────────────
 function destroyObstacle(o, col=0xffcc33, relay=true){
   if(!o||o._gone) return;
+  if(o.crystal)col=0xcc88ff;
   o._gone=true;
   const ox=o.x, oz=o.z;
   if(o.mesh){
@@ -1428,6 +1446,7 @@ function damageObstacle(o,dmg,col=0xffcc33){
     const pct=Math.max(0,o.hp/(o.maxHp||1));
     o.mesh.material.emissiveIntensity=0.35+0.65*(1-pct);
     o.mesh.scale.y=0.75+0.25*pct;
+    o.mesh.updateMatrix();
   }
   if(o.hp<=0){ destroyObstacle(o,col); return true; }
   return false;
