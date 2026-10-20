@@ -1,7 +1,7 @@
 // Damage rules have explicit live-state readers so resets and remote snapshots
 // are not captured accidentally. Visual feedback is supplied by the caller.
 export function createDamageSystem({ permLevel, relicDamageMult, getSkills, getPlayer,
-  getPhaseVulnerability, getCritBonus, onExecute,
+  getPhaseVulnerability, getCritBonus, onExecute, getProtectionMult = () => 1,
   PERM_CRIT_CHANCE, CRIT_LUCK_BONUS, PERM_BOSS_DMG_MULT, random = Math.random }) {
 function rollCrit(sourcePerm){
   const critLvl = sourcePerm ? (sourcePerm.crit||0)     : permLevel('crit');
@@ -12,7 +12,7 @@ function rollCrit(sourcePerm){
 }
 
 function playerDamageAmount(enemy, base, sourcePerm=null){
-  let dmg=base*(sourcePerm?(sourcePerm.relicDmg||1):relicDamageMult());
+  let dmg=base*(sourcePerm?(sourcePerm.relicDmg||1):relicDamageMult())*getProtectionMult(enemy);
   if(enemy?.type==='rammer'&&enemy.ram?.phase==='crashed')dmg*=1.35;
   const bossLvl=sourcePerm?sourcePerm.bossHunter||0:permLevel('bossHunter');
   if(enemy&&enemy.type==='boss') dmg*=PERM_BOSS_DMG_MULT[bossLvl]||1;

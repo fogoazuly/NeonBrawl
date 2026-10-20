@@ -1,3 +1,4 @@
+import { chooseLinks, linkIsValid } from './combat/linker.js';
 import { advanceOverload, overloadSpawnInterval } from './combat/overload.js';
 import { foundryPhase } from './combat/foundry.js';
 import { createRunScoreRecorder } from './run-score.js';
@@ -547,6 +548,7 @@ function rollCrystalDrop(e){
 // ── Enemy types ────────────────────────────────────────────
 const ETYPES = {
   rammer: {hp:110,spd:2.7,r:0.65,col:0xffbb44,emi:0xff6600,pts:45,role:'NEON RAM'},
+  linker: {hp:72,spd:2.0,r:0.5,col:0xcc88ff,emi:0x8833ff,pts:65,role:'LINKER'},
   chaser:  { hp:42,  spd:4.45, r:0.52, col:0xff2244, emi:0xff1133, pts:10, role:'GRUNT' },
   shooter: { hp:38,  spd:2.15, r:0.48, col:0xff8800, emi:0xff6600, pts:20, role:'RIFLEBOT' },
   tank:    { hp:160, spd:1.75, r:0.72, col:0x6688ff, emi:0x3366ff, pts:50, role:'BULWARK' },
@@ -609,6 +611,7 @@ const RANGED_HELL_TYPES = new Set(['shooter','sniper']);
 function getWaveConfig(w){
   let base=_getWaveConfigBase(w);
   if(w>=7)base=[...base,['rammer',Math.min(3,1+Math.floor((w-7)/6))]];
+  if(w>=9)base=[...base,['linker',w>=18?2:1]];
   // Bone Tribute (cursed) — enemy spawn count up by the relic's level mult.
   // Applied before challenge-specific filtering so it flows into rangedHell.
   {
@@ -1724,6 +1727,7 @@ const MAX_ENEMIES = 90; // hard cap for late waves with elites
 const ENEMY_GEO = {};
 Object.entries(ETYPES).forEach(([type,cfg])=>{
   switch(type){
+    case 'linker': ENEMY_GEO[type]=new THREE.OctahedronGeometry(cfg.r*1.3); break;
     case 'rammer': ENEMY_GEO[type]=new THREE.BoxGeometry(cfg.r*2.1,.9,cfg.r*2.5); break;
     case 'tank':    ENEMY_GEO[type]=new THREE.BoxGeometry(cfg.r*2.35,1.18,cfg.r*1.95); break;
     case 'shooter': ENEMY_GEO[type]=new THREE.BoxGeometry(cfg.r*1.65,1.02,cfg.r*1.45); break;
@@ -1768,7 +1772,7 @@ const ENEMY_PART_GEO = {
 // emissive colour. Plain melee grunts get none (less clutter).
 const ENEMY_GLYPH = {
   shooter:'diamond', sniper:'diamond', bomber:'circle', dasher:'arrow',
-  disruptor:'hex', healer:'cross', shieldBearer:'shield', tank:'chevron',
+  disruptor:'hex', linker:'hex', healer:'cross', shieldBearer:'shield', tank:'chevron',
   summoner:'star',
 };
 const _glyphTexCache={};
@@ -1908,6 +1912,7 @@ function simplifyEnemyRigForTier(p,type){
   if(GFX_ENEMY_RIG_DETAIL>=2 || type==='boss') return;
   const keep = new Set(['body','visor']);
   if(type==='rammer'){keep.add('head');keep.add('podL');keep.add('podR');}
+  if(type==='linker'){keep.add('core');keep.add('ring');keep.add('podL');keep.add('podR');}
   if(p.threatHalo?.visible) keep.add('threatHalo');
   if(GFX_ENEMY_RIG_DETAIL===1){
     keep.add('head');
@@ -2059,6 +2064,13 @@ function configureEnemyModel(m,type,cfg){
     p.ring.position.set(0,0.40,0); p.ring.rotation.x=Math.PI/2; p.ring.scale.set(1.02,1.02,1.02);
     p.eyeL.position.set(-0.10,0.74,0.29); p.eyeR.position.set(0.10,0.74,0.29);
     p.visor.position.set(0,0.74,0.33); p.visor.scale.set(0.8,0.8,0.8);
+  } else if(type==='linker'){
+    p.core.visible=p.ring.visible=p.podL.visible=p.podR.visible=true;
+    p.body.scale.set(.8,1.3,.8);
+    p.core.position.set(0,.65,0);p.core.scale.set(.8,.8,.8);
+    p.podL.position.set(-.65,.45,0);p.podR.position.set(.65,.45,0);
+    p.podL.scale.set(.5,1.6,.5);p.podR.scale.set(.5,1.6,.5);
+    p.ring.position.set(0,.45,0);p.ring.rotation.x=Math.PI/2;p.ring.scale.set(1.5,1.5,1.5);
   } else if(type==='healer'){
     // Medic — head + core (heart-glow), pulsing ring underneath. No
     // weapon. Healer's signature visual is the spinning ring that grows
@@ -2428,6 +2440,7 @@ function acquireEnemySlot(type, x, z){
 }
 
 function releaseEnemySlot(e){
+  if(linkerBeams)linkerBeams.visible=false;
   slowMap.delete(e.poolIdx); phaseVulnMap.delete(e.poolIdx); poisonMap.delete(e.poolIdx);
   elementTagMap.delete(e.poolIdx); _releaseTagIndicatorFor(e.poolIdx);
   e.mesh.visible = false;
@@ -9336,6 +9349,7 @@ function applyHostEnemyState(data){
       e.mesh.material.emissiveIntensity=0.38*(ed.hp/(ed.maxHp||e.cfg.hp))+0.16;
       if(e.mesh.scale.x<0.5) e.mesh.scale.setScalar(1);
     }
+    e.linkSourceId=Number.isInteger(ed.linkSourceId)?ed.linkSourceId:null;
     if(e.type==='rammer')e.ram={phase:ed.ramPhase||'idle',dx:ed.ramDX||0,dz:ed.ramDZ||1};
   }
 }
@@ -9399,6 +9413,7 @@ function sendHostState(){
         vx:Math.round(vx*100)/100,vz:Math.round(vz*100)/100,
         type:e.type,hp:e.hp,maxHp:e.maxHp,elite:e.elite||null,eliteName:e.eliteName||'',bossName:e.bossName||'',
         ramPhase:e.ram?.phase,ramDX:e.ram?.dx,ramDZ:e.ram?.dz,
+        linkSourceId:e.linkSource?.poolIdx??null,
         atq:e.attackSeq||0,atd:Math.round((e.attackDur||0.24)*100)/100,
       };
     }),
@@ -12977,6 +12992,7 @@ const { rollCrit, playerDamageAmount } = createDamageSystem({
   getPlayer: () => player,
   getPhaseVulnerability: () => phaseVulnMap,
   getCritBonus: () => _critChanceBonus,
+  getProtectionMult: enemy => enemy&&linkIsValid(enemy.linkSource,enemy,lineBlockedByObstacle)?0.7:1,
   PERM_CRIT_CHANCE, CRIT_LUCK_BONUS, PERM_BOSS_DMG_MULT,
   onExecute(enemy) {
     if(skillFxThrottle('exec'+enemy.poolIdx,250)){
@@ -16108,6 +16124,37 @@ function updateMapHazards(dt, now){
   }
 }
 
+let linkerBeams=null;
+function updateLinkerTargets(){
+  for(const e of enemies)e.linkSource=null;
+  if(mp.soloMode||mp.isHost){
+    for(const {source,target} of chooseLinks(enemies,lineBlockedByObstacle))target.linkSource=source;
+  }else{
+    const byId=new Map(enemies.filter(e=>!e.dead).map(e=>[e.poolIdx,e]));
+    for(const e of enemies)e.linkSource=byId.get(e.linkSourceId)||null;
+  }
+}
+function updateLinkerVisuals(){
+  if(!linkerBeams){
+    const geo=new THREE.BufferGeometry();
+    geo.setAttribute('position',new THREE.BufferAttribute(new Float32Array(16*18),3));
+    linkerBeams=new THREE.Mesh(geo,new THREE.MeshBasicMaterial({color:0xcc88ff,transparent:true,opacity:.9,side:THREE.DoubleSide,depthWrite:false,toneMapped:false,blending:THREE.AdditiveBlending}));
+    linkerBeams.frustumCulled=false;scene.add(linkerBeams);
+  }
+  const pos=linkerBeams.geometry.attributes.position;
+  let count=0;
+  for(const target of enemies){
+    const source=target.linkSource;
+    if(count>=16||!linkIsValid(source,target,lineBlockedByObstacle))continue;
+    const dx=target.pos.x-source.pos.x,dz=target.pos.z-source.pos.z;
+    const length=Math.hypot(dx,dz)||1,ox=-dz/length*.07,oz=dx/length*.07;
+    for(const [i,end,side] of [[0,source,-1],[1,target,-1],[2,target,1],[3,source,-1],[4,target,1],[5,source,1]])
+      pos.setXYZ(count*6+i,end.pos.x+ox*side,end===source?.95:.7,end.pos.z+oz*side);
+    count++;
+  }
+  pos.needsUpdate=true;linkerBeams.geometry.setDrawRange(0,count*6);
+  linkerBeams.visible=count>0&&gState==='playing';
+}
 function update(dt){
   player.gravityExhaustion=Math.max(0,(player.gravityExhaustion||0)-dt);
   updateDowned(dt);
@@ -16121,6 +16168,7 @@ function update(dt){
   // host / solo (spawnWave is host-gated in nextWave), so this is a no-op
   // on remote clients.
   tickWaveSpawnQueue(dt);
+  updateLinkerTargets();
 
   // ── Player ──
   if(!player.dead){
@@ -16700,7 +16748,7 @@ function update(dt){
           // the player so its forward shield arc points at the threat.
           // Splitter / splitterling / berserker are also straight melee rushers.
           desiredX=navX; desiredZ=navZ;
-        } else if(e.type==='healer'||e.type==='summoner'){
+        } else if(e.type==='healer'||e.type==='summoner'||e.type==='linker'){
           // Healer keeps mid-rear distance (~7m). Backs off if too close,
           // strafes if at sweet spot. Same archetype as sniper but slower.
           if(dist<7&&dist>0.01){desiredX=-dx/dist;desiredZ=-dz/dist;}
@@ -17859,6 +17907,7 @@ function update(dt){
 
   // ── Level clear / exit ──
   updateMiniObjective(dt, now);
+  updateLinkerVisuals();
   // Wave event tick: bounty pass/fail evaluation + banner refresh.
   evaluateBountyTick();
   tickMeteorStormChallenge(dt);
