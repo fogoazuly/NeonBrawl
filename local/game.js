@@ -1,3 +1,4 @@
+import { advanceOverload, overloadSpawnInterval } from './combat/overload.js';
 import { foundryPhase } from './combat/foundry.js';
 import { createRunScoreRecorder } from './run-score.js';
 import { setupLeaderboard } from './leaderboard.js';
@@ -3082,16 +3083,17 @@ function objectiveSpotIsFree(x,z){
   return Number.isFinite(x)&&Number.isFinite(z)&&Math.abs(x)<=ARENA_W-r&&Math.abs(z)<=ARENA_H-r&&
     !obstacleBoxes.some(o=>!o._gone&&Math.abs(x-o.x)<o.hw+r&&Math.abs(z-o.z)<o.hd+r);
 }
-function freeObjectiveSpot(preferred){
+function freeObjectiveSpot(preferred, reserved=[]){
+  const available=(x,z)=>objectiveSpotIsFree(x,z)&&reserved.every(p=>Math.hypot(p.x-x,p.z-z)>=4);
   // Match cell snapshot precision before checking clearance on the host.
   preferred={x:Math.round(preferred.x*100)/100,z:Math.round(preferred.z*100)/100};
-  if(objectiveSpotIsFree(preferred.x,preferred.z))return {x:preferred.x,z:preferred.z};
+  if(available(preferred.x,preferred.z))return {x:preferred.x,z:preferred.z};
   let best=null,bestDistance=Infinity;
   // Bounded fallback: never accept a wall just because random retries ran out.
   for(let x=-ARENA_W+1;x<=ARENA_W-1;x+=0.5){
     for(let z=-ARENA_H+1;z<=ARENA_H-1;z+=0.5){
       const distance=(x-preferred.x)**2+(z-preferred.z)**2;
-      if(distance<bestDistance&&objectiveSpotIsFree(x,z)){best={x,z};bestDistance=distance;}
+      if(distance<bestDistance&&available(x,z)){best={x,z};bestDistance=distance;}
     }
   }
   return best;
@@ -3115,7 +3117,10 @@ function spawnObjectiveEnemy(){
   else if(e===2){ x=(Math.random()*2-1)*m; z=-m; }
   else { x=(Math.random()*2-1)*m; z=m; }
   const type=waveNum>=8&&Math.random()<0.35?'speeder':(waveNum>=6&&Math.random()<0.25?'bomber':'chaser');
-  spawnWarningCircle(x,z,1.4,0xffaa00,0.4,()=>spawnEnemy(type,x,z));
+  const objective=miniObjective;
+  spawnWarningCircle(x,z,1.4,0xffaa00,0.4,()=>{
+    if(miniObjective===objective&&!objective?.complete&&gState==='playing')spawnEnemy(type,x,z);
+  });
 }
 function playersNearObjective(x,z,r){
   const list=[];
@@ -3164,6 +3169,17 @@ function setupMiniObjective(w, forcedType=null, visualOnly=false){
     ]};
     miniObjective.safe.zones.forEach(z=>{ z.ring=addObjectiveRing(z.x,z.z,miniObjective.safe.r,0xff66cc); });
     if(!visualOnly) annText('OBJECTIVE: STAY INSIDE A STORM EYE','#ff66cc');
+  } else if(type==='overload'){
+    const positions=[];
+    for(const preferred of RELAY_POSITIONS){
+      const spot=freeObjectiveSpot(preferred,positions);
+      if(!spot){miniObjective.type='clear';return;}
+      positions.push(spot);
+    }
+    miniObjective.overload={spawnCd:1.2,terminals:positions.map(p=>({...p,arm:0,remaining:18,state:'idle',
+      node:addObjectiveNode(p.x,p.z,0xffaa33),ring:addObjectiveRing(p.x,p.z,1.8,0xffaa33)}))};
+    updateOverloadVisuals(miniObjective);
+    if(!visualOnly)annText('OVERLOAD: STAND NEAR TERMINALS TO START','#ffaa33');
   } else if(type==='relays'){
     // 3 relays hacked one at a time; only the active one is shown. Enemies pour
     // in until all are captured (host-driven; clients see it via the snapshot).
@@ -3182,6 +3198,16 @@ function setupMiniObjective(w, forcedType=null, visualOnly=false){
     if(!visualOnly) annText('OBJECTIVE: COLLECT THE CELLS','#66ffcc');
   }
 }
+function updateOverloadVisuals(o){
+  for(const t of o.overload.terminals){
+    const color=t.state==='done'?0x66ffcc:t.state==='active'?0xff5533:0xffaa33;
+    t.ring.material.color.setHex(color);
+    t.ring.material.opacity=t.state==='active'?0.65:t.state==='done'?0.25:0.2+t.arm*0.2;
+    t.ring.scale.setScalar(t.state==='active'?0.65+0.35*(1-t.remaining/18):1);
+    t.node.scale.setScalar(t.state==='done'?0.65:t.state==='active'?1.15:1);
+    t.node.traverse(m=>{if(m.material?.color)m.material.color.setHex(color);});
+  }
+}
 function miniObjectiveStatus(){
   const o=miniObjective;
   if(!o||o.type==='clear'||o.complete) return '';
@@ -3196,6 +3222,7 @@ function miniObjectiveStatus(){
   }
   if(o.type==='survive') return `OBJ STORM EYES ${Math.ceil(o.timer)}s`;
   if(o.type==='relays') return `OBJ RELAYS ${o.relays.captured}/${RELAY_POSITIONS.length}${o.relays.progress>0&&o.relays.progress<1?` ${Math.round(o.relays.progress*100)}%`:''}`;
+  if(o.type==='overload')return 'OBJ OVERLOAD '+o.overload.terminals.map((t,i)=>`${i+1}:${t.state==='done'?'OK':t.state==='active'?Math.ceil(t.remaining)+'s':Math.round(t.arm/2*100)+'%'}`).join(' ');
   if(o.type==='cells') return `OBJ CELLS ${o.cells.collected}/${o.cells.total}`;
   return '';
 }
@@ -3211,7 +3238,7 @@ function miniObjectiveBlocksWaveClear(){
   if(!o||o.complete) return false;
   if(o.type==='spawners') return !!o.spawners?.some(s=>s.alive);
   // Relays/cells spawn enemies indefinitely and only end when the objective is done.
-  if(o.type==='relays'||o.type==='cells') return true;
+  if(o.type==='relays'||o.type==='cells'||o.type==='overload') return true;
   return false;
 }
 function livingPlayerNear(x,z,r){
@@ -3333,6 +3360,23 @@ function updateMiniObjective(dt, now){
       if(s.hitCd<=0) s.hitCd=0.85;
     }
     if(o.timer<=0) completeMiniObjective();
+  } else if(o.type==='overload'){
+    const terminals=o.overload.terminals;
+    for(const t of terminals){
+      const before=t.state;
+      advanceOverload(t,dt,livingPlayerNear(t.x,t.z,1.8));
+      if(t.state!==before){
+        spawnShockwave(t.x,t.z,2.2,t.state==='done'?0x66ffcc:0xffaa33,0.4,0.8);
+        if(t.state==='active')annText('TERMINAL ONLINE — SURVIVE 18s','#ffaa33');
+      }
+    }
+    updateOverloadVisuals(o);
+    if(terminals.every(t=>t.state==='done')){completeMiniObjective();return;}
+    o.overload.spawnCd-=dt;
+    if(o.overload.spawnCd<=0){
+      o.overload.spawnCd=overloadSpawnInterval(terminals);
+      spawnObjectiveEnemy();
+    }
   } else if(o.type==='relays'){
     const r=o.relays;
     r.spawnCd-=dt; if(r.spawnCd<=0){ r.spawnCd=1.8+Math.random()*0.8; spawnObjectiveEnemy(); }
@@ -3462,6 +3506,7 @@ function miniObjectiveSnapshot(){
     if(o.safe.zones) snap.safe.zones=o.safe.zones.map(z=>({x:Math.round(z.x*100)/100,z:Math.round(z.z*100)/100,target:z.target||0,moveT:Math.round((z.moveT||0)*10)/10}));
     else { snap.safe.x=Math.round(o.safe.x*100)/100; snap.safe.z=Math.round(o.safe.z*100)/100; }
   }
+  if(o.overload)snap.overload=o.overload.terminals.map(({x,z,arm,remaining,state})=>({x,z,arm,remaining,state}));
   if(o.relays) snap.relays={positions:o.relays.positions.map(p=>({...p})),index:o.relays.index,captured:o.relays.captured,progress:Math.round((o.relays.progress||0)*100)/100};
   if(o.cells) snap.cells={collected:o.cells.collected,active:!!o.cells.active,x:Math.round((o.cells.posX||0)*100)/100,z:Math.round((o.cells.posZ||0)*100)/100};
   return snap;
@@ -3518,6 +3563,15 @@ function applyMiniObjectiveSnapshot(snap){
         miniObjective.ring.scale.setScalar((miniObjective.safe.r||4.4)/4.4);
       }
     }
+  }
+  if(snap.overload&&miniObjective.overload&&snap.overload.length===3){
+    snap.overload.forEach((data,i)=>{
+      const t=miniObjective.overload.terminals[i];
+      if(!Number.isFinite(data.x)||!Number.isFinite(data.z))return;
+      Object.assign(t,{x:data.x,z:data.z,arm:data.arm,remaining:data.remaining,state:data.state});
+      t.node.position.set(t.x,0,t.z);t.ring.position.set(t.x,0.09,t.z);
+    });
+    updateOverloadVisuals(miniObjective);
   }
   if(snap.relays&&miniObjective.relays){
     const r=miniObjective.relays;
@@ -3638,7 +3692,7 @@ function tickWaveSpawnQueue(dt){
 // sub-events it has. Weights: mini 15%, bounty 20%, challenge 30%, bonus 20%,
 // nothing 15%. "Bonus" groups loot / crystal / mutation.
 const WAVE_EVENT_CATEGORIES = [
-  { chance: 0.15, events: [ {type:'mini',sub:'spawners'}, {type:'mini',sub:'survive'}, {type:'mini',sub:'relays'}, {type:'mini',sub:'cells'} ] },
+  { chance: 0.15, events: [ {type:'mini',sub:'spawners'}, {type:'mini',sub:'survive'}, {type:'mini',sub:'relays'}, {type:'mini',sub:'cells'}, {type:'mini',sub:'overload'} ] },
   { chance: 0.20, events: [ {type:'bounty',sub:'noDamage'}, {type:'bounty',sub:'fastClear'}, {type:'bounty',sub:'noDeaths'}, {type:'bounty',sub:'noBullet'} ] },
   { chance: 0.30, events: [ {type:'challenge',sub:'speedDemon'}, {type:'challenge',sub:'meteorStorm'}, {type:'challenge',sub:'rangedHell'}, {type:'challenge',sub:'fogOfWar'}, {type:'challenge',sub:'vampireNight'}, {type:'challenge',sub:'plagueField'}, {type:'challenge',sub:'eliteSurge'} ] },
   { chance: 0.20, events: [ {type:'loot'}, {type:'crystal'}, {type:'mutation'}, {type:'doublePick'} ] },
@@ -3649,7 +3703,7 @@ function rollWaveEvent(w){
   let r=Math.random();
   for(const cat of WAVE_EVENT_CATEGORIES){
     if(r < cat.chance){
-      const eligible=cat.events.filter(e=>e.sub!=='meteorStorm'||w>25);
+      const eligible=cat.events.filter(e=>(e.sub!=='meteorStorm'||w>25)&&(e.sub!=='overload'||w>=8));
       const e=eligible[Math.floor(Math.random()*eligible.length)];
       // Shallow clone so each wave gets its own mutable flags (complete/failed/_claimed).
       return Object.assign({},e);
@@ -3659,7 +3713,7 @@ function rollWaveEvent(w){
   return null; // nothing (the remaining 15%)
 }
 const WAVE_EVENT_LABELS = {
-  mini:      { title:'★ MINI OBJECTIVE',   color:'#ffaa00', sub:{ spawners:'BREACH THE SPAWNERS', survive:'STAY IN THE STORM EYE', relays:'CAPTURE ALL 3 RELAYS', cells:'COLLECT ALL 10 CELLS' } },
+  mini:      { title:'★ MINI OBJECTIVE',   color:'#ffaa00', sub:{ spawners:'BREACH THE SPAWNERS', survive:'STAY IN THE STORM EYE', relays:'CAPTURE ALL 3 RELAYS', cells:'COLLECT ALL 10 CELLS', overload:'HOLD NEAR EACH TERMINAL 2s · SURVIVE ITS CHARGE' } },
   loot:      { title:'★ LOOT WAVE',        color:'#ffd166', desc:'Clear the wave for a bonus card' },
   bounty:    { title:'★ BOUNTY WAVE',      color:'#ff66cc', sub:{ noDamage:'NO DAMAGE TAKEN', fastClear:'CLEAR IN UNDER 60s', noDeaths:'STAY UP — NO DEATHS', noBullet:'NO GUNFIRE — MELEE & SKILLS ONLY' } },
   challenge: { title:'★ CHALLENGE WAVE',   color:'#ff5577', sub:{ speedDemon:'ENEMIES MOVE 2× FASTER', meteorStorm:'METEORS RAIN — KEEP MOVING', rangedHell:'LONG-RANGE ENEMIES · +50% FIRE RATE', fogOfWar:'VISIBILITY HEAVILY REDUCED', vampireNight:'ENEMIES HEAL ON HIT', plagueField:'NO HEALING — DAMAGE STAYS', eliteSurge:'EVERY ENEMY SPAWNS AS AN ELITE' } },
