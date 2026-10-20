@@ -1,3 +1,4 @@
+import { foundryPhase } from './combat/foundry.js';
 import { createRunScoreRecorder } from './run-score.js';
 import { setupLeaderboard } from './leaderboard.js';
 import { PrecisionStreak, lastWordBonus, NeonJudgment } from './combat/pistol.js';
@@ -764,10 +765,10 @@ const EXTRA_NORMAL_PRESETS = [
     floors:[R(0,0,6.2,{col:0x2a0b24,opacity:0.22}),R(0,0,2.0,{col:0xff66cc,opacity:0.16}),Q(0,-7.2,9.4,1.7,{col:0x2a0b24,opacity:0.22}),Q(0,7.2,9.4,1.7,{col:0x2a0b24,opacity:0.22}),Q(-7.2,0,1.7,9.4,{col:0x2a0b24,opacity:0.22}),Q(7.2,0,1.7,9.4,{col:0x2a0b24,opacity:0.22})],
     blocks:[B(2.5,2.2,1.0,0,-4.8,{destructible:true,hp:140}),B(2.5,2.2,1.0,0,4.8,{destructible:true,hp:140}),B(1.0,2.2,2.5,-4.8,0,{destructible:true,hp:140}),B(1.0,2.2,2.5,4.8,0,{destructible:true,hp:140}),B(1.2,2.2,1.2,-7.1,-7.1),B(1.2,2.2,1.2,7.1,-7.1),B(1.2,2.2,1.2,-7.1,7.1),B(1.2,2.2,1.2,7.1,7.1)],
     hazards:[R(0,0,2.0,{type:'damage',dmg:6,col:0xff66cc}),R(0,0,6.2,{type:'slow',mult:0.82,col:0xff66cc})]},
-  {id:'enc_foundry_lanes',type:'normal',name:'FOUNDRY LANES',color:0xffaa33,theme:{wall:0x1c1000,strip:0xffaa33,floor:0x0e0800,gridA:0x241400,gridB:0x100800},
-    floors:[Q(-4.4,0,3.2,24.0,{col:0xffaa33,opacity:0.11}),Q(4.4,0,3.2,24.0,{col:0xffaa33,opacity:0.11}),Q(0,0,1.7,24.0,{col:0xff3333,opacity:0.15}),R(0,-7.2,2.2,{col:0x2a1800,opacity:0.23}),R(0,7.2,2.2,{col:0x2a1800,opacity:0.23})],
-    blocks:[B(2.0,2.3,4.0,-2.1,-5.6),B(2.0,2.3,4.0,2.1,5.6),B(1.5,2.2,1.5,-6.5,-1.5,{destructible:true,breakable:true,hp:120}),B(1.5,2.2,1.5,6.5,1.5,{destructible:true,breakable:true,hp:120}),B(3.8,2.2,1.1,0,0,{destructible:true,hp:160})],
-    hazards:[Q(0,0,1.7,24.0,{type:'damage',dmg:5,col:0xff3333}),Q(-4.4,0,3.2,22.0,{type:'slow',mult:0.82,col:0xffaa33}),Q(4.4,0,3.2,22.0,{type:'slow',mult:0.82,col:0xffaa33})]},
+  {id:'enc_foundry_lanes',type:'normal',name:'NEON FOUNDRY',color:0xffaa33,theme:{wall:0x1c1000,strip:0xffaa33,floor:0x0e0800,gridA:0x241400,gridB:0x100800},
+    floors:[Q(0,0,4,24,{col:0x33ddcc,opacity:0.09}),Q(-4.5,0,2.4,20,{col:0xffaa33,opacity:0.10}),Q(4.5,0,2.4,20,{col:0xffaa33,opacity:0.10})],
+    blocks:[B(2,2.3,3,-7.5,-5),B(2,2.3,3,7.5,5),B(2,2.3,3,-7.5,5),B(2,2.3,3,7.5,-5)],
+    hazards:[Q(-4.5,0,2.4,20,{type:'heat',lane:0,dmg:6,col:0xff5533}),Q(4.5,0,2.4,20,{type:'heat',lane:1,dmg:6,col:0xff5533})]},
   {id:'enc_bridge_cross',type:'normal',name:'BRIDGE CROSS',color:0x88ddff,theme:{wall:0x001622,strip:0x88ddff,floor:0x000b11,gridA:0x002333,gridB:0x001018},
     floors:[R(0,-7.2,3.0,{col:0x0a2636,opacity:0.26}),R(0,7.2,3.0,{col:0x0a2636,opacity:0.26}),R(-7.2,0,2.8,{col:0x0a2636,opacity:0.24}),R(7.2,0,2.8,{col:0x0a2636,opacity:0.24}),Q(0,0,3.0,15.8,{col:0x88ddff,opacity:0.13}),Q(0,0,15.8,3.0,{col:0x88ddff,opacity:0.13})],
     blocks:[B(1.2,2.3,3.8,-3.0,-3.0),B(1.2,2.3,3.8,3.0,3.0),B(3.8,2.3,1.2,-3.0,3.0),B(3.8,2.3,1.2,3.0,-3.0),B(1.5,2.2,1.5,0,0,{destructible:true,breakable:true,hp:170})],
@@ -1000,6 +1001,7 @@ const _fogProj = new THREE.Vector3();
 const obstacleBoxes = []; // {x,z,hw,hd}
 const obstacleObjects = []; // THREE.Mesh refs for current layout
 const mapDecorObjects = []; // non-collision floor accents for current layout
+let mapHazardTime=0;
 const mapHazards = [];
 const mapHazardObjects = [];
 let sceneWallMat=null, sceneFloorMat=null, sceneStripMat=null, sceneGrid=null;
@@ -1335,6 +1337,7 @@ function changeMapLayout(layoutIdx){
   mapHazardObjects.forEach(m=>{scene.remove(m);m.geometry.dispose();m.material.dispose();});
   mapHazardObjects.length=0;
   mapHazards.length=0;
+  mapHazardTime=0;
   obstacleBoxes.length=0;
   const preset=ARENA_PRESETS[layoutIdx]||ARENA_PRESETS[0];
 
@@ -1383,11 +1386,12 @@ function changeMapLayout(layoutIdx){
     let mesh=null, matH=null, details=[];
     if(h.visual!==false){
       const baseCol=kind==='grass'?0x1a4a0a:kind==='water'?0x0d4880:(h.col||preset.color||0xff3355);
-      const baseOpacity=kind==='grass'?0.93:kind==='water'?0.93:0.30;
+      const baseOpacity=h.type==='heat'?0.08:kind==='grass'?0.93:kind==='water'?0.93:0.30;
       const z=makeZoneMesh({...h,blending:kind==='damage'?THREE.AdditiveBlending:THREE.NormalBlending},baseCol,baseOpacity,0.026);
       mesh=z.mesh; matH=z.mat;
       mapHazardObjects.push(mesh);
       details=decorateZone(h,kind,mapHazardObjects);
+      if(h.type==='heat')for(const detail of details)detail.visible=false;
     }
     mapHazards.push({...h,mesh,mat:matH,details,kind,t:0});
   });
@@ -9354,7 +9358,7 @@ function sendHostState(){
       dmg:b.dmg,
       spd:b.spd,
     })),
-    wave:waveNum,score,waveClear,waveSpawned,mapLayout:currentMapLayout,
+    wave:waveNum,score,waveClear,waveSpawned,mapLayout:currentMapLayout,mapHazardTime,
     objective:miniObjectiveSnapshot(),
     event:waveEvent ? {type:waveEvent.type, sub:waveEvent.sub||null, failed:!!waveEvent.failed, complete:!!waveEvent.complete} : null,
     totem:waveTotemSnapshot(),
@@ -11194,6 +11198,7 @@ function handleIncomingMP(msg, fromId){
         if(Number.isFinite(msg.mapLayout)&&msg.mapLayout!==currentMapLayout){
           changeMapLayout(msg.mapLayout);
         }
+        if(Number.isFinite(msg.mapHazardTime))mapHazardTime=Math.max(0,msg.mapHazardTime);
         applyHostEnemyState(msg.enemies);
         updateBossBarFromEnemies();
         applyHostEnemyBulletState(msg.enemyBullets);
@@ -15996,6 +16001,8 @@ function setEnemyOpacity(e,alpha){
   e.mesh.visible=alpha>0.01 || e.spawnAnim>0 || (e.grassRevealT||0)>0 || (e.grassExitRevealT||0)>0;
 }
 function updateMapHazards(dt, now){
+  const heatRunning=gState==='playing'&&!waveClear&&!waveTransition;
+  if(heatRunning)mapHazardTime+=dt;
   for(const h of mapHazards){
     h.t=(h.t||0)+dt;
     const type=h.type||'damage';
@@ -16015,7 +16022,16 @@ function updateMapHazards(dt, now){
     // Grass sway used to update every blade's rotation per frame (hundreds
     // of mesh writes / map). Static tufts read fine at 54° camera tilt and
     // the perf win on low-end laptops is significant.
-    if(type!=='damage') continue;
+    if(type==='heat'){
+      const phase=heatRunning?foundryPhase(mapHazardTime,h.lane):'off';
+      h.phase=phase;
+      for(const detail of h.details||[])detail.visible=phase!=='off';
+      if(h.mat){
+        h.mat.color.setHex(phase==='active'?0xff4422:phase==='warning'?0xffcc33:0x774422);
+        h.mat.opacity=phase==='active'?0.7:phase==='warning'?0.3+0.25*(0.5+0.5*Math.sin(mapHazardTime*12)):0.08;
+      }
+      if(phase!=='active'){h.hitCd={};continue;}
+    }else if(type!=='damage') continue;
     if(!h.hitCd) h.hitCd={};
     h.hitCd.local=Math.max(0,(h.hitCd.local||0)-dt);
     // The host also sends hazard hits to guests; guests only animate the zone.
