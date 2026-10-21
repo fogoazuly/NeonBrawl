@@ -1,4 +1,18 @@
 const rank=(n,max)=>Math.max(0,Math.min(max,Math.floor(Number(n)||0)));
+export class SteelStorm{
+  constructor(){this.reset();}
+  reset(){this.charge=0;this.rounds=0;this.gap=0;}
+  tick(dt,enabled){
+    this.gap+=dt;
+    if(!enabled||this.gap>=3)this.reset();
+  }
+  shot(){
+    this.gap=0;
+    if(this.rounds>0){this.rounds--;return true;}
+    if(++this.charge>=40){this.charge=0;this.rounds=12;}
+    return false;
+  }
+}
 export function ak47Spread(level){return .14*(1-[0,.15,.25,.35,.45][rank(level,4)]);}
 export class RifleRhythm{
   constructor(){this.reset();}

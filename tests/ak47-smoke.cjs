@@ -26,6 +26,13 @@ gameTest.akReload=()=>{
  const boosted=player.reloadDur;player.reloadT=0;player.ammo=1;nbPaused=false;startManualReload();nbPaused=true;
  return {base,boosted,second:player.reloadDur};
 };
+gameTest.akStorm=()=>{
+ const eligible=skillEligible('ak47Ascension');applySkill('ak47Ascension');applySkill('ak47Ascension');
+ steelStorm.reset();for(let i=0;i<40;i++)steelStorm.shot();
+ const damage=gameTest.akShot(10,5);updateSteelStormHud();
+ return {eligible,picks:skillPickLevel('ak47Ascension'),rarity:SKILL_RARITY.ak47Ascension,damage,
+ pierce:bulletPool.filter(b=>b.active&&b.isPlayer).map(b=>b.pierce),rounds:steelStorm.rounds,charge:steelStorm.charge,hud:steelStormHud.textContent};
+};
 const akRealUpdate=update;
 gameTest.akNetPrepare=()=>{nbPaused=true;update=()=>{};resetGameplayInput();};
 gameTest.akNetGuest=()=>{
@@ -38,11 +45,12 @@ gameTest.akNetKill=id=>{
 gameTest.akWindow=()=>ak47Rhythm.reloadWindow;
 gameTest.akNetFire=()=>{
  ak47Rhythm.reset();for(let i=0;i<10;i++)ak47Rhythm.shot(3);
+ applySkill('ak47Ascension');steelStorm.reset();for(let i=0;i<40;i++)steelStorm.shot();playerSkills.spread=5;
  player.ammo=10;player.reloadT=0;player.fireCd=0;mouse.world.set(player.pos.x,0,player.pos.z-8);mouse.hasWorld=true;mouse.down=true;
  akRealUpdate(.016);mouse.down=false;
- return bulletPool.filter(b=>b.active&&b.isPlayer&&b.ownerId===mp.myId).map(b=>b.dmg);
+ return bulletPool.filter(b=>b.active&&b.isPlayer&&b.ownerId===mp.myId).map(b=>({dmg:b.dmg,pierce:b.pierce}));
 };
-gameTest.akRemoteBullets=id=>bulletPool.filter(b=>b.active&&b.isPlayer&&b.ownerId===id).map(b=>b.dmg);
+gameTest.akRemoteBullets=id=>bulletPool.filter(b=>b.active&&b.isPlayer&&b.ownerId===id).map(b=>({dmg:b.dmg,pierce:b.pierce}));
 `;
 (async()=>{
  const browser=await launch(),errors=[];try{
@@ -54,6 +62,12 @@ gameTest.akRemoteBullets=id=>bulletPool.filter(b=>b.active&&b.isPlayer&&b.ownerI
   assert.equal(ramp.length,6);assert.ok(ramp.every((d,i)=>d>=base[i]*1.35&&d<=base[i]*1.45));
   const reload=await p.evaluate(()=>gameTest.akReload());
   assert.ok(Math.abs(reload.boosted/reload.base-.6)<1e-8);assert.equal(reload.second,reload.base);
+  const storm=await p.evaluate(()=>gameTest.akStorm());
+  assert.equal(storm.eligible,true);assert.equal(storm.picks,1);assert.equal(storm.rarity,'divine');
+  assert.equal(storm.rounds,11);assert.equal(storm.charge,0);assert.equal(storm.damage.length,6);
+  assert.ok(storm.damage.every((d,i)=>Math.abs(d-ramp[i]*2)<=1));assert.ok(storm.pierce.every(n=>n===2));
+  assert.match(storm.hud,/11 empowered shots/);
+  await p.screenshot({path:'test-results/ak47-steel-storm.png'});
   await c.close();
   const hc=await browser.newContext(),gc=await browser.newContext();await instrument(hc,hooks);await instrument(gc,hooks);
   const host=await hc.newPage(),guest=await gc.newPage();for(const p of [host,guest])p.on('pageerror',e=>errors.push(e.message));
