@@ -29,11 +29,14 @@ update=dt=>{
   if(!player.dead&&(gState==='playing'||gState==='shopround')){
     let target=null,nearest=Infinity;
     for(const e of enemies){if(e.dead)continue;const d=Math.hypot(e.pos.x-player.pos.x,e.pos.z-player.pos.z);if(d<nearest){nearest=d;target=e.pos;}}
+    const priority=enemies.find(e=>!e.dead&&e.type==='boss')||enemies.find(e=>!e.dead&&e.type==='linker'&&Math.hypot(e.pos.x-player.pos.x,e.pos.z-player.pos.z)<10);
+    if(priority)target=priority.pos;
     let goal=null;
     if(waveClear&&exitOpen||gState==='shopround')goal={x:0,z:EXIT_Z};
     else if(miniObjective&&!miniObjective.complete){const o=miniObjective;
       if(o.type==='cells'&&o.cells.active)goal={x:o.cells.posX,z:o.cells.posZ};
       if(o.type==='relays')goal=o.relays.positions[o.relays.index];
+      if(o.type==='overload'){const t=o.overload.terminals.find(t=>t.state==='idle');if(t)goal={x:t.x,z:t.z};}
       if(o.type==='defend')goal={x:0,z:0};
       if(o.type==='survive')goal=o.safe.zones[0];
       if(o.type==='spawners'){const s=o.spawners.find(s=>s.alive);if(s){goal={x:s.x,z:s.z};target=goal;}}
@@ -63,7 +66,8 @@ update=dt=>{
 gameTest.watchState=()=>({state:gState,wave:waveNum,hp:Math.round(player.hp),kills:killCount,score,difficulty:nbDifficulty,protected:watchProtected,event:waveEvent?.sub||waveEvent?.type,seconds:Math.round(watchElapsed)});
 gameTest.watchStop=()=>{watchEnabled=false;resetGameplayInput();if(gState!=='gameover')nbPauseOpen();badge.textContent=watchDifficulty.toUpperCase()+' • PARTIDA ENCERRADA • resultado preservado';};
 `;
-(async()=>{
+module.exports={hooks};
+if(require.main===module)(async()=>{
   const browser=await chromium.launch({channel:'chrome',headless:false,args:['--start-maximized']});
   const c=await browser.newContext({viewport:null});await instrument(c,hooks);
   const p=await c.newPage(),errors=[];p.on('pageerror',e=>{errors.push(e.message);console.log('ERROR',e.message);});

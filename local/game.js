@@ -3164,11 +3164,11 @@ function playersNearObjective(x,z,r){
 }
 function objectiveDamageEnemies(x,z,r,dmg,col=0x00ffcc){
   for(let i=enemies.length-1;i>=0;i--){
-    const e=enemies[i]; if(e.dead) continue;
+    const e=enemies[i]; if(!e||e.dead) continue;
     if(Math.hypot(e.pos.x-x,e.pos.z-z)<=r+e.cfg.r){
       e.hp-=dmg; e.hitFlashT=0.12; addEnemyStagger(e,0.16);
       showHitNumber(e,dmg,cssHex(col),mp.myId,'skill');
-      if(e.hp<=0) killEnemy(i);
+      if(e.hp<=0) killEnemy(e);
     }
   }
 }
@@ -5973,7 +5973,7 @@ function updateBladeWaves(dt){
     // can't be re-damaged as the wave drifts over them across frames.
     const hitRadius=w.width*1.08;
     for(let j=enemies.length-1;j>=0;j--){
-      const e=enemies[j]; if(e.dead) continue;
+      const e=enemies[j]; if(!e||e.dead) continue;
       if(w.hit.has(e.poolIdx)) continue;
       if(Math.hypot(e.pos.x-cx,e.pos.z-cz)<hitRadius+e.cfg.r){
         damageEnemyIndex(j,w.dmg,w.col,0.12,w.ownerId,'melee');
@@ -7478,7 +7478,7 @@ function getSummonSizeMult(){
 function nearestEnemy(x,z,maxDist=999){
   let best=null,bestDist=maxDist;
   for(let i=0;i<enemies.length;i++){
-    const e=enemies[i]; if(e.dead) continue;
+    const e=enemies[i]; if(!e||e.dead) continue;
     const d=Math.hypot(e.pos.x-x,e.pos.z-z);
     if(d<bestDist){best={enemy:e,idx:i,dist:d};bestDist=d;}
   }
@@ -7503,7 +7503,7 @@ let _egridStamp = 0;
 function rebuildEnemyGrid(){
   _egrid.clear();
   for(let i=0;i<enemies.length;i++){
-    const e=enemies[i]; if(e.dead) continue;
+    const e=enemies[i]; if(!e||e.dead) continue;
     e._gi=i; // frame-start live index — used only to order candidates for the tie-break
     const r=(e.cfg&&e.cfg.r)||0.5;
     const minx=Math.floor((e.pos.x-r)/EGRID_CELL), maxx=Math.floor((e.pos.x+r)/EGRID_CELL);
@@ -7534,7 +7534,7 @@ function epicRank(id){
 function damageEnemiesInCircle(x,z,r,dmg,color=0xffdd44,stagger=0.1,source='skill'){
   let hits=0;
   for(let i=enemies.length-1;i>=0;i--){
-    const e=enemies[i]; if(e.dead) continue;
+    const e=enemies[i]; if(!e||e.dead) continue;
     if(Math.hypot(e.pos.x-x,e.pos.z-z)<=r+e.cfg.r){
       if(damageEnemyIndex(i,dmg,color,stagger,mp.myId,source)) hits++;
       else hits++;
@@ -7549,7 +7549,7 @@ function damageEnemiesInLine(x,z,dx,dz,len,width,dmg,color=0xffdd44,stagger=0.1,
   const tx=x+dx*len, tz=z+dz*len;
   let hits=0;
   for(let i=enemies.length-1;i>=0;i--){
-    const e=enemies[i]; if(e.dead) continue;
+    const e=enemies[i]; if(!e||e.dead) continue;
     if(segmentPointDistance(e.pos.x,e.pos.z,x,z,tx,tz)<=width*0.5+e.cfg.r){
       if(damageEnemyIndex(i,dmg,color,stagger,mp.myId,source)) hits++;
       else hits++;
@@ -7569,7 +7569,7 @@ function damageEnemyWithSource(idx, base, color=0xffdd44, stagger=0.08, ownerId=
   const hitDmg=playerDamageAmount(e,base,sourcePerm);
   e.hp-=hitDmg; e.hitFlashT=0.12; addEnemyStagger(e,stagger);
   showHitNumber(e,hitDmg,cssHex(color),ownerId,source);
-  if(e.hp<=0){ killEnemy(idx); return true; }
+  if(e.hp<=0){ killEnemy(e); return true; }
   return false;
 }
 
@@ -7638,7 +7638,7 @@ function explodePlayerBullet(b, color=0xff6600, skipIdx=-1){
   if(b.visualOnly) return;
   for(let i=enemies.length-1;i>=0;i--){
     if(i===skipIdx) continue;
-    const e=enemies[i]; if(e.dead) continue;
+    const e=enemies[i]; if(!e||e.dead) continue;
     const d=Math.hypot(e.pos.x-b.pos.x,e.pos.z-b.pos.z);
     if(d<=r+e.cfg.r){
       const fall=1-Math.min(0.65,d/Math.max(1,r))*0.55;
@@ -7681,7 +7681,7 @@ function damageEnemyIndex(idx, dmg, color=0xffdd44, stagger=0.08, ownerId=mp.myI
   showHitNumber(e,hitDmg,'#'+color.toString(16).padStart(6,'0'),ownerId,source);
   // showHitNumber sets enemy._lastHitOwner=ownerId, so killEnemy will read the
   // correct owner from there for kill / drop attribution. No need to thread it.
-  if(e.hp<=0){ killEnemy(idx); return true; }
+  if(e.hp<=0){ killEnemy(e); return true; }
   return false;
 }
 
@@ -8080,7 +8080,7 @@ function explodeMine(mineIndex){
   const r=MINE_R[lvl], dmg=Math.round(MINE_DMG[lvl]*atkScale());
   burst(m.pos,0xffaa00,isMobile?8:14); spawnShockwave(m.pos.x,m.pos.z,r,0xffaa00,0.26,0.75);
   for(let i=enemies.length-1;i>=0;i--){
-    const e=enemies[i]; if(e.dead) continue;
+    const e=enemies[i]; if(!e||e.dead) continue;
     if(Math.hypot(e.pos.x-m.pos.x,e.pos.z-m.pos.z)<r+e.cfg.r) damageEnemyIndex(i,dmg,0xffaa00,0.16,mp.myId,'summon');
   }
   scene.remove(m.mesh); m.mesh.material.dispose();
@@ -9526,7 +9526,7 @@ function damageEnemiesInConeWithSource(x,z,dx,dz,range,cone,dmg,color,stagger,ow
   const targets=[];
   let hits=0;
   for(let i=enemies.length-1;i>=0;i--){
-    const e=enemies[i]; if(e.dead) continue;
+    const e=enemies[i]; if(!e||e.dead) continue;
     if(hitSet?.has(e.poolIdx)) continue;
     const ex=e.pos.x-x, ez=e.pos.z-z;
     const d=Math.hypot(ex,ez);
@@ -9639,7 +9639,7 @@ function applySpecialGunFire(gun,x,z,dx,dz,dmg,ownerId=mp.myId,visualOnly=false,
         const tx=seg.x+seg.dx*seg.len, tz=seg.z+seg.dz*seg.len;
         const targets=[];
         for(let i=enemies.length-1;i>=0;i--){
-          const e=enemies[i]; if(e.dead) continue;
+          const e=enemies[i]; if(!e||e.dead) continue;
           if(hitSet.has(e.poolIdx)) continue;
           if(segmentPointDistance(e.pos.x,e.pos.z,seg.x,seg.z,tx,tz)<=width*0.5+e.cfg.r&&!lineBlockedByObstacle(seg.x,seg.z,e.pos.x,e.pos.z,width*0.5)){
             const d=(e.pos.x-seg.x)*seg.dx+(e.pos.z-seg.z)*seg.dz;
@@ -9909,7 +9909,7 @@ function findHookTarget(x,z,dx,dz,range){
   const width=0.52;
   let bestT=range, best={x:x+dx*range,z:z+dz*range,enemyIndex:null,hit:false,kind:'air'};
   for(let i=enemies.length-1;i>=0;i--){
-    const e=enemies[i]; if(e.dead) continue;
+    const e=enemies[i]; if(!e||e.dead) continue;
     const ex=e.pos.x-x, ez=e.pos.z-z;
     const t=ex*dx+ez*dz;
     if(t<0||t>bestT) continue;
@@ -10386,7 +10386,7 @@ function performMeleeAttack(weapon, opts={}){
     spawnCircleMeleeVfx(cfg,x,z);
     if(!opts.visualOnly){
       for(let i=enemies.length-1;i>=0;i--){
-        const e=enemies[i]; if(e.dead) continue;
+        const e=enemies[i]; if(!e||e.dead) continue;
         if(Math.hypot(e.pos.x-x,e.pos.z-z)<=cfg.range+e.cfg.r){
           damageEnemyIndex(i,dmg,cfg.color,cfg.stagger,ownerId,'melee');
           applyGuardBreakerKnock(e);
@@ -10442,7 +10442,7 @@ function performMeleeAttack(weapon, opts={}){
     if(!opts.visualOnly){
       const hitR=0.92;
       for(let i=enemies.length-1;i>=0;i--){
-        const e=enemies[i]; if(e.dead) continue;
+        const e=enemies[i]; if(!e||e.dead) continue;
         if(segmentPointDistance(e.pos.x,e.pos.z,x,z,tx,tz)<=hitR+e.cfg.r){
           damageEnemyIndex(i,dmg,cfg.color,cfg.stagger,ownerId,'melee');
           applyGuardBreakerKnock(e);
@@ -10455,7 +10455,7 @@ function performMeleeAttack(weapon, opts={}){
   spawnMeleeSlashVfx(cfg.id,x,z,dx,dz,cfg);
   if(!opts.visualOnly){
   for(let i=enemies.length-1;i>=0;i--){
-    const e=enemies[i]; if(e.dead) continue;
+    const e=enemies[i]; if(!e||e.dead) continue;
     const ex=e.pos.x-x, ez=e.pos.z-z;
     const dist=Math.hypot(ex,ez);
     if(dist>cfg.range+e.cfg.r) continue;
@@ -12788,7 +12788,7 @@ function triggerArchmageLoop(source){
       te.hp-=dmg; te.hitFlashT=0.16; addEnemyStagger(te,0.24);
       showHitNumber(te,dmg,'#ffffaa',mp.myId,'spell');
       spawnStormZap(te.pos.x,te.pos.z);
-      if(te.hp<=0&&ei>=0) killEnemy(ei);
+      if(te.hp<=0&&ei>=0) killEnemy(te);
     }
   } else if(pick==='lightning'){
     const chain=[...enemies].filter(e=>!e.dead)
@@ -12801,7 +12801,7 @@ function triggerArchmageLoop(source){
       spawnZapLine(player.pos.x,player.pos.z,te.pos.x,te.pos.z);
       spawnStormZap(te.pos.x,te.pos.z);
       showHitNumber(te,dmg,'#66ccff',mp.myId,'spell');
-      if(te.hp<=0) killEnemy(ei);
+      if(te.hp<=0) killEnemy(te);
     }
   }
   burst(player.pos,0xcc33ff,isMobile?6:12);
@@ -12928,7 +12928,7 @@ function updateLegendaryEffects(dt){
       }
       spawnShockwave(player.pos.x,player.pos.z,r,0xff3366,0.10,0.28);
       for(let i=enemies.length-1;i>=0;i--){
-        const e=enemies[i]; if(e.dead) continue;
+        const e=enemies[i]; if(!e||e.dead) continue;
         if(Math.hypot(e.pos.x-player.pos.x,e.pos.z-player.pos.z)<r+e.cfg.r) damageEnemyIndex(i,dmg,0xff3366,0.10,mp.myId,'melee');
       }
       if(miniObjective?.type==='spawners' && !miniObjective.complete){
@@ -12948,7 +12948,7 @@ function updateLegendaryEffects(dt){
       const orbitR=orbPulseRadius(performance.now());
       if(Math.random()<0.34) spawnSkillRingAura(player.pos.x,player.pos.z,orbitR,0x66ddff,0.34,0.32);
       for(let i=enemies.length-1;i>=0;i--){
-        const e=enemies[i]; if(e.dead) continue;
+        const e=enemies[i]; if(!e||e.dead) continue;
         const dx=e.pos.x-player.pos.x, dz=e.pos.z-player.pos.z;
         const d=Math.hypot(dx,dz)||1;
         if(d>9.5) continue;
@@ -13127,7 +13127,7 @@ function detonateAfterimageZone(z){
   flashLight({x:z.x,z:z.z},0x44aaff,2.2,4.2,0.12);
   if(!z.visualOnly){
     for(let i=enemies.length-1;i>=0;i--){
-      const e=enemies[i]; if(e.dead) continue;
+      const e=enemies[i]; if(!e||e.dead) continue;
       if(Math.hypot(e.pos.x-z.x,e.pos.z-z.z)<z.r+e.cfg.r){
         damageEnemyIndex(i,z.dmg,0x44aaff,0.14,mp.myId,'movement');
       }
@@ -13435,7 +13435,7 @@ function performBlinkStrike(x,z,lvl,opts={}){
   spawnSwordSlash(x,z,r,lvl);
   if(!visualOnly){
     for(let i=enemies.length-1;i>=0;i--){
-      const e=enemies[i]; if(e.dead) continue;
+      const e=enemies[i]; if(!e||e.dead) continue;
       if(Math.hypot(e.pos.x-x,e.pos.z-z)<r+e.cfg.r){
         damageEnemyIndex(i,Math.round(BLINK_DMG[lvl]*atkScale()),0xdffcff,0.22,mp.myId,'movement');
       }
@@ -13455,7 +13455,7 @@ function finishDash(){
     const ang=Math.atan2(ex-sx,ez-sz);
     spawnWarningLine((sx+ex)*0.5,(sz+ez)*0.5,ang,len,1.25,0x44aaff,0.42,()=>{
       for(let i=enemies.length-1;i>=0;i--){
-        const e=enemies[i]; if(e.dead) continue;
+        const e=enemies[i]; if(!e||e.dead) continue;
         if(segmentPointDistance(e.pos.x,e.pos.z,sx,sz,ex,ez)<=1.25+e.cfg.r) damageEnemyIndex(i,Math.round(playerStats.attackDmg*7.0),0x44aaff,0.24,mp.myId,'movement');
       }
       spawnShockwave(ex,ez,2.0,0x44aaff,0.20,0.62);
@@ -13475,7 +13475,7 @@ function finishDash(){
     spawnShockwave(player.pos.x,player.pos.z,r,0x33ffcc,0.24,0.86);
     flashLight(player.pos,0x33ffcc,2.6,5,0.14);
     for(let i=enemies.length-1;i>=0;i--){
-      const e=enemies[i]; if(e.dead) continue;
+      const e=enemies[i]; if(!e||e.dead) continue;
       if(Math.hypot(e.pos.x-player.pos.x,e.pos.z-player.pos.z)<r+e.cfg.r){
         damageEnemyIndex(i,dmg,0x33ffcc,0.18,mp.myId,'movement');
       }
@@ -14235,7 +14235,7 @@ function cellIdx(x,z){
 function buildGrid(){
   for(let i=0;i<grid2D.length;i++) grid2D[i]=null;
   for(let i=0;i<enemies.length;i++){
-    const e=enemies[i]; if(e.dead) continue;
+    const e=enemies[i]; if(!e||e.dead) continue;
     const idx=cellIdx(e.pos.x,e.pos.z);
     e._next=grid2D[idx]; grid2D[idx]=i;
   }
@@ -15688,8 +15688,12 @@ function hurtPlayer(dmg){
   }
 }
 
-function killEnemy(idx, fromRemote=false){
-  const e=enemies[idx]; e.dead=true;
+function killEnemy(target, fromRemote=false){
+  // Reactions may remove this target before the outer attack finishes.
+  // Retain identity: a saved array index can now point at a survivor.
+  const e=typeof target==='number'?enemies[target]:target;
+  if(!e||e.dead||!enemies.includes(e))return;
+  e.dead=true;
   const killOwner=e._lastHitOwner??mp.myId;
   if(!fromRemote) recordKill(killOwner);
   if(e.type==='boss'){
@@ -16681,7 +16685,7 @@ function update(dt){
           spawnStormZap(te.pos.x,te.pos.z);
           shakeAmt=Math.max(shakeAmt,0.14);
           tagElement(te,'thunder',stormDmg);
-          if(te.hp<=0) killEnemy(ei);
+          if(te.hp<=0) killEnemy(te);
         }
         if(targets.length>0) sLightH();
         if(targets.length>0) triggerArchmageLoop('stormCall');
@@ -16732,7 +16736,7 @@ function update(dt){
     activeGravityFields.length=0;
     for(const b of bulletPool)if(b.active&&b.bulletKind==='gravity'&&!b.visualOnly&&b.delay<=0&&!b.gravityTravelling)activeGravityFields.push(b);
     for(let i=enemies.length-1;i>=0;i--){
-      const e=enemies[i]; if(e.dead) continue;
+      const e=enemies[i]; if(!e||e.dead) continue;
       e.gravitySource=gravityFieldForEnemy(e);
       const tgt=getEnemyTarget(e.pos.x,e.pos.z);
       if(!tgt){
@@ -17279,7 +17283,7 @@ function update(dt){
     // dead-reckoning so a delayed HOST_STATE packet doesn't freeze the enemy.
     // netVX/netVZ are last-known host velocity; we extrapolate up to 0.5s.
     for(let i=0;i<enemies.length;i++){
-      const e=enemies[i]; if(e.dead) continue;
+      const e=enemies[i]; if(!e||e.dead) continue;
       if(e.netReady){
         e.netExtrapT=(e.netExtrapT||0)+dt;
         if(e.netExtrapT<0.5){
@@ -17626,7 +17630,7 @@ function update(dt){
                 const splashDmg=playerDamageAmount(ee,Math.max(1,Math.round(b.dmg*0.4*_falloffMult)),b.ownerPerm);
                 ee.hp-=splashDmg; addEnemyStagger(ee,0.12); ee.hitFlashT=0.12;
                 showHitNumber(ee,splashDmg,'#ff8800',b.ownerId??mp.myId,'bullet');
-                if(ee.hp<=0){ killEnemy(ej); if(ej<j) j--; }
+                if(ee.hp<=0){ killEnemy(ee); if(ej<j) j--; }
               }
             }
           }
@@ -17736,7 +17740,7 @@ function update(dt){
             showHitNumber(ee,fireOrbDmg,'#ff5500',mp.myId,'orb');
             burst({x:fx2,z:fz2},0xff5500,6); impactPulse({x:fx2,z:fz2},0xff5500,0.75,3); sFireHitThrot();
             tagElement(ee,'fire',fireOrbDmg);
-            if(ee.hp<=0) killEnemy(ei);
+            if(ee.hp<=0) killEnemy(ee);
             fireballHitCd.set(cdKey,0.32);
           }
         }
@@ -17776,7 +17780,7 @@ function update(dt){
             applyEnemySlow(ee,2.5);
             burst({x:ox,z:oz},0x88ddff,6); impactPulse({x:ox,z:oz},0x88ddff,0.65,3); sIceHitThrot();
             tagElement(ee,'ice',iceOrbDmg);
-            if(ee.hp<=0) killEnemy(ei);
+            if(ee.hp<=0) killEnemy(ee);
             iceHitCd.set(ck,0.40);
           }
         }
@@ -17815,7 +17819,7 @@ function update(dt){
             showHitNumber(ee,thunderOrbDmg,'#ffff44',mp.myId,'orb');
             burst({x:ox,z:oz},0xffff44,7); spawnZapLine(ox,oz,ee.pos.x,ee.pos.z); sThunHitThrot();
             tagElement(ee,'thunder',thunderOrbDmg);
-            if(ee.hp<=0) killEnemy(ei);
+            if(ee.hp<=0) killEnemy(ee);
             thunderHitCd.set(ck,0.42);
           }
         }
@@ -17855,7 +17859,7 @@ function update(dt){
             if(!poisonMap.has(ee.poolIdx)) poisonMap.set(ee.poolIdx,{t:3,tick:0,dmg:Math.round(18*atkScale()*ORB_PWR_MULT[playerSkills.orbPower||0]*orbDamageMult())});
             else { const p=poisonMap.get(ee.poolIdx); p.t=3; }
             tagElement(ee,'poison',poisonOrbDmg);
-            if(ee.hp<=0) killEnemy(ei);
+            if(ee.hp<=0) killEnemy(ee);
             poisonHitCd.set(ck,0.60);
           }
         }
@@ -17916,7 +17920,7 @@ function update(dt){
         showHitNumber(te,zapDmg,'#44aaff',mp.myId,'spell');
         sLightH();
         tagElement(te,'thunder',zapDmg);
-        if(te.hp<=0) killEnemy(ei);
+        if(te.hp<=0) killEnemy(te);
       }
       if(sorted.length>0) triggerArchmageLoop('lightning');
     }
@@ -18022,7 +18026,7 @@ function update(dt){
           burst({x:sx,z:sz},0xcc33ff,isMobile?4:7);
           impactPulse({x:sx,z:sz},0xcc33ff,0.9,isMobile?3:6);
           showHitNumber(e,spellDmg,'#cc33ff',mp.myId,'spell');
-          if(e.hp<=0) killEnemy(j);
+          if(e.hp<=0) killEnemy(e);
         }
       }
       // Spell ball hits spawner once when it sweeps over.
@@ -18061,7 +18065,7 @@ function update(dt){
           showHitNumber(e,ringDmg,'#ff8800',mp.myId,'spell');
           burst({x:e.pos.x,z:e.pos.z},0xff5500,4);
           tagElement(e,'fire',ringDmg);
-          if(e.hp<=0) killEnemy(j);
+          if(e.hp<=0) killEnemy(e);
         }
       }
       // Fire ring sweeps the spawner — one hit per ring per spawner.
@@ -18097,7 +18101,7 @@ function update(dt){
       if(hb.mesh.children[0]) hb.mesh.children[0].material.opacity=0.18+0.16*Math.abs(Math.sin(now*0.018+i));
       let exploded=false;
       for(let j=enemies.length-1;j>=0;j--){
-        const e=enemies[j]; if(e.dead) continue;
+        const e=enemies[j]; if(!e||e.dead) continue;
         if(Math.hypot(hb.pos.x-e.pos.x,hb.pos.z-e.pos.z)<e.cfg.r+0.25){
           burst(hb.pos,0xff3300,isMobile?8:14); burst(hb.pos,0xff9900,isMobile?5:8);
           spawnShockwave(hb.pos.x,hb.pos.z,hb.explR);
@@ -18109,7 +18113,7 @@ function update(dt){
               const bombDmg=playerDamageAmount(ee,hb.dmg);
               ee.hp-=bombDmg; addEnemyStagger(ee,0.15); ee.hitFlashT=0.12;
               showHitNumber(ee,bombDmg,'#ff4400',mp.myId,'spell');
-              if(ee.hp<=0) killEnemy(ej);
+              if(ee.hp<=0) killEnemy(ee);
             }
           }
           exploded=true; break;
