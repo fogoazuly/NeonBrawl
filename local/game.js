@@ -1,3 +1,5 @@
+import { RifleRhythm, ak47Spread } from './combat/ak47.js';
+const ak47Rhythm=new RifleRhythm();
 import { chooseLinks, linkIsValid } from './combat/linker.js';
 import { advanceOverload, overloadSpawnInterval } from './combat/overload.js';
 import { foundryPhase } from './combat/foundry.js';
@@ -1483,6 +1485,10 @@ function currentReloadTime(){
   return Math.max(0.15, base * (player.gravityExhaustion>0?1.5:1) * (typeof RELOAD_TIME_MULT!=='undefined'
     ? (RELOAD_TIME_MULT[playerSkills.reloadSpeed||0]||1)
     : 1));
+}
+function weaponReloadTime(){
+  const mult=player.gun==='ak47'?ak47Rhythm.reload(skillPickLevel('ak47Tactical')):1;
+  return Math.max(.15,currentReloadTime()*mult);
 }
 function currentFireCd(){
   const gun=(typeof GUNS!=='undefined'&&player)?(GUNS[player.gun]||GUNS.pistol):null;
@@ -5007,7 +5013,7 @@ function updateGravityAscension(dt,wantFire,cooldownMult=1){
     if(!b){cancelGravityCharge();return true;}
     fireSpreadShots(gun,d.x,d.z,dmg,0,{gravityCharge:charge});
     if(full)player.gravityExhaustion=10;
-    if(!hasRelic('infiniteMag')){player.ammo--;if(player.ammo<=0){player.reloadDur=currentReloadTime();player.reloadT=player.reloadDur;sReloadStart();}}
+    if(!hasRelic('infiniteMag')){player.ammo--;if(player.ammo<=0){player.reloadDur=weaponReloadTime();player.reloadT=player.reloadDur;sReloadStart();}}
     player.fireCd=gun.fireCd*cooldownMult*(player.gravityExhaustion>0?1.5:1);
     sendFireMP(x,z,d.x,d.z,dmg,0,opts);noteWaveEventGunFire();playGunShootSfx('gravity');updateAmmoHud();
     player.gravityCharge=0;player.gravityChargeLatch=full&&wantFire;
@@ -5038,10 +5044,15 @@ function fireRupture(x,z,dx,dz,dmg,ownerId,perm,visualOnly=false){
     }
   }
 }
+function armRifleReload(){
+  if(player.gun==='ak47'&&playerSkills.ak47Tactical&&!player.dead){
+    ak47Rhythm.kill();dmgNum('RELOAD READY',player.pos,'#ffaa66');
+  }
+}
 function startManualReload(){
   if(gState!=='playing'||nbPaused||!player||player.dead||player.reloadT>0)return;
   if(player.ammo>=currentMagSize()&&!(player.gun==='pistol'&&playerSkills.pistolAscension&&pistolJudgment.ready))return;
-  player.reloadDur=currentReloadTime();player.reloadT=player.reloadDur;player.ammo=0;sReloadStart();
+  player.reloadDur=weaponReloadTime();player.reloadT=player.reloadDur;player.ammo=0;sReloadStart();
 }
 function registerJudgmentHit(b){
   if(!b.judgmentCharge)return;
@@ -6660,6 +6671,9 @@ function atkScale(){ return (playerStats.attackDmg/25)*crystalPowerMult(); }
 
 const SKILL_DEFS = {
   shotgunAscension:{name:'Rupture',icon:'🌋',requiresGun:'shotgun',desc:['','','','','','Hit at close range with 8 blasts. Next shot also releases a 10m frontal shockwave: 12× pellet damage and 0.4s stagger. Walls block it. Pellets keep all card bonuses; the empowered blast cannot recharge Rupture.']},
+  ak47Control:{name:'Recoil Control',icon:'🎯',requiresGun:'ak47',desc:['','AK47: 15% less dispersion','AK47: 25% less dispersion','','AK47: 35% less dispersion','AK47: 45% less dispersion']},
+  ak47Momentum:{name:'Sustained Fire',icon:'🔥',requiresGun:'ak47',desc:['','Each consecutive primary shot adds 2% damage, up to +20%. Resets on reload or a 0.7s firing gap.','','3% per shot, up to +30%.','','4% per shot, up to +40%.']},
+  ak47Tactical:{name:'Combat Reload',icon:'🔄',requiresGun:'ak47',desc:['','A kill while holding AK47 makes the next reload started within 4s take 20% less time. Does not stack.','','30% less reload time.','','40% less reload time.']},
   shotgunImpact:{name:'Brutal Impact',icon:'💥',requiresGun:'shotgun',desc:['','Within 3m of muzzle: push enemies 0.45m and stagger 0.12s, once per target per blast. Bosses and elites resist.','','Push 0.65m and stagger 0.18s','','Push 0.85m and stagger 0.24s']},
   shotgunRain:{name:'Lead Rain',icon:'🌧️',requiresGun:'shotgun',desc:['','Shotgun: +2 pellets, +10% dispersion','Shotgun: +4 pellets, +20% dispersion','','Shotgun: +6 pellets, +30% dispersion','Shotgun: +8 pellets, +40% dispersion']},
   shotgunFocus:{name:'Point Blank',icon:'🎯',requiresGun:'shotgun',desc:['','Each pellet hitting the same target adds +4% damage to later pellets in that blast (max +32%).','','+6% per earlier hit (max +48%)','','+8% per earlier hit (max +64%)']},
@@ -6860,6 +6874,7 @@ const OVERHEAL_SHIELD_PCT = [0,    0.12, 0.12,  0.24, 0.24, 0.36];
 
 const SKILL_CATEGORY = {
   eventHorizon:'bullet',unstableCollapse:'bullet',persistentSingularity:'bullet',gravityAscension:'bullet',
+  ak47Control:'bullet',ak47Momentum:'bullet',ak47Tactical:'bullet',
   pistolRicochet:'bullet',pistolPrecision:'bullet',pistolLastWord:'bullet',pistolAscension:'bullet',shotgunImpact:'bullet',shotgunRain:'bullet',shotgunFocus:'bullet',shotgunAscension:'bullet',
   spread:'bullet', rapidFire:'bullet', pierce:'bullet', explosive:'bullet',
   bounce:'bullet', heavyRounds:'bullet', bulletPower:'bullet', railBurst:'bullet', overclockBarrage:'bullet',
@@ -6924,6 +6939,7 @@ const RARITY_INFO = {
   divine: {label:'DIVINE ASCENSION', max:1, weight:0.001, color:'#fff1ff'},
 };
 const SKILL_RARITY = {
+  ak47Control:'uncommon',ak47Momentum:'rare',ak47Tactical:'rare',
   eventHorizon:'uncommon', unstableCollapse:'rare', persistentSingularity:'rare', gravityAscension:'divine',
   pistolRicochet:'uncommon',pistolPrecision:'rare',pistolLastWord:'rare',pistolAscension:'divine',shotgunImpact:'rare',shotgunRain:'uncommon',shotgunFocus:'rare',shotgunAscension:'divine',
   bulletPower:'common', rapidFire:'common', pierce:'common', orbPower:'common', orbSpeed:'common',
@@ -10626,6 +10642,7 @@ const CARD_ICON_ALIAS = {
   smg:'burst', cryo:'iceOrb', flamethrower:'fireOrb', sniper:'railgun', rpg:'explosive',
   laser:'railgun', minigun:'grenade', boomerang:'boomerang', gravity:'emoji',
   eventHorizon:'emoji',unstableCollapse:'emoji',persistentSingularity:'emoji',gravityAscension:'emoji',
+  ak47Control:'emoji',ak47Momentum:'emoji',ak47Tactical:'emoji',
   pistolRicochet:'emoji',pistolPrecision:'emoji',pistolLastWord:'emoji',pistolAscension:'emoji',shotgunImpact:'emoji',shotgunRain:'emoji',shotgunFocus:'emoji',shotgunAscension:'emoji',
   katana:'katana', dagger:'dagger', axe:'axe', hook:'hook', samurai:'samurai',
   atk:'heavy', heal:'healDrop', hp:'barrier', maxhp:'barrier', maxHp:'barrier', speed:'dash',
@@ -11371,6 +11388,9 @@ function handleIncomingMP(msg, fromId){
       if(o) destroyObstacle(o,msg.col||0xffcc33,false);
       break;
     }
+    case 'AK47_RELOAD_READY':
+      if(!mp.isHost&&msg.targetId===mp.myId)armRifleReload();
+      break;
     case 'RUPTURE_CHARGE':
       if(!mp.isHost&&msg.targetId===mp.myId&&playerSkills.shotgunAscension)ruptureCharge.hit();
       break;
@@ -11573,6 +11593,7 @@ function startAsClient(spawnPos,mapLayout=0){
   pistolJudgment.reset();
   shotgunSalvos.reset();
   ruptureCharge.reset();
+  ak47Rhythm.reset();
   runScore.begin();
   // Clear any stale input state from the previous run. If the player held LMB
   // or a movement key when game-over fired, the corresponding browser
@@ -14275,6 +14296,7 @@ function initGame(){
   pistolJudgment.reset();
   shotgunSalvos.reset();
   ruptureCharge.reset();
+  ak47Rhythm.reset();
   runScore.begin();
   // See startAsClient for why: stale mouse/key state from the previous run
   // can lock firing or trigger movement on respawn.
@@ -15695,7 +15717,13 @@ function killEnemy(target, fromRemote=false){
   if(!e||e.dead||!enemies.includes(e))return;
   e.dead=true;
   const killOwner=e._lastHitOwner??mp.myId;
-  if(!fromRemote) recordKill(killOwner);
+  if(!fromRemote){
+    recordKill(killOwner);
+    if(killOwner===mp.myId)armRifleReload();
+    else if(mp.isHost&&mp.remotePlayers[killOwner]?.gun==='ak47'&&mp.remotePlayers[killOwner]?.skills?.ak47Tactical){
+      const c=mp.conns.get(+killOwner);if(c?.open)c.send(JSON.stringify({type:'AK47_RELOAD_READY',targetId:+killOwner}));
+    }
+  }
   if(e.type==='boss'){
     _bossClearPending=true;
     hitStop(0.22); musicSwell(1.3);
@@ -16179,6 +16207,7 @@ function updateLinkerVisuals(){
   linkerBeams.visible=count>0&&gState==='playing';
 }
 function update(dt){
+  ak47Rhythm.tick(dt,player.gun==='ak47',player.reloadT>0);
   player.gravityExhaustion=Math.max(0,(player.gravityExhaustion||0)-dt);
   updateDowned(dt);
   updateReviveAssist(dt);
@@ -16455,7 +16484,7 @@ function update(dt){
           const pdmg=Math.max(1,Math.round(playerStats.attackDmg*BULLET_PWR_MULT[playerSkills.bulletPower||0]*crystalPowerMult()*activeGun.dmgMult*(1+p*4)));
           if(!hasRelic('infiniteMag')){
             player.ammo--;
-            if(player.ammo<=0){ player.reloadDur=currentReloadTime(); player.reloadT=player.reloadDur; sReloadStart(); }
+            if(player.ammo<=0){ player.reloadDur=weaponReloadTime(); player.reloadT=player.reloadDur; sReloadStart(); }
           }
           player.fireCd=activeGun.fireCd*rfMult*fireRateMult*(hasRelic('infiniteMag')?(RELIC_LEVELS.infiniteMag.fireMul[relicLevel('infiniteMag')]||1):1)*buffFireRateMult();
           applySpecialGunFire(activeGun,player.pos.x+d.x*0.72,player.pos.z+d.z*0.72,d.x,d.z,pdmg,mp.myId,false,true,null,{charge:p});
@@ -16479,12 +16508,13 @@ function update(dt){
     while(!gravityHandled&&activeGun.id!=='railgun'&&wantFire&&player.fireCd<=0&&player.reloadT<=0&&player.ammo>0&&primaryCatchupShots<PRIMARY_FIRE_CATCHUP_MAX){
       primaryCatchupShots++;
       const gun=activeGun;
+      const rifleDamage=gun.id==='ak47'?ak47Rhythm.shot(skillPickLevel('ak47Momentum')):1;
       const shotgunOpts=gun.id==='shotgun'?{shotgunSalvo:runGeneration+':'+(++shotgunSequence)}:null;
-      const pattern=gun.id==='shotgun'?shotgunPattern(skillPickLevel('shotgunRain')):{pellets:gun.bulletsPerShot,spread:gun.spread};
+      const pattern=gun.id==='shotgun'?shotgunPattern(skillPickLevel('shotgunRain')):{pellets:gun.bulletsPerShot,spread:gun.id==='ak47'?ak47Spread(skillPickLevel('ak47Control')):gun.spread};
       const pistolOpts=gun.id==='pistol'?{pistolShot:true,pistolPrimary:true,pistolJudgment:!!playerSkills.pistolAscension&&pistolJudgment.fire(),pistolLast:player.ammo===1&&!hasRelic('infiniteMag')}:null;
       if(!hasRelic('infiniteMag')){
         player.ammo--;
-        if(player.ammo<=0){ player.reloadDur=currentReloadTime(); player.reloadT=player.reloadDur; player.minigunSpin=0; sReloadStart(); }
+        if(player.ammo<=0){ player.reloadDur=weaponReloadTime(); player.reloadT=player.reloadDur; player.minigunSpin=0; sReloadStart(); }
       }
       // Gun-specific base cooldown; rapidFire skill + perm fire-rate
       // multiplier stack on top, same as before.
@@ -16512,7 +16542,7 @@ function update(dt){
       if(Math.hypot(fx,fz)>0.1){
         // Crystal Force scales every bullet; gun.dmgMult is per-pellet so
         // shotguns deal small per-pellet damage but stack via 12 pellets.
-        const pdmgBase=playerStats.attackDmg*BULLET_PWR_MULT[playerSkills.bulletPower||0]*crystalPowerMult()*gun.dmgMult;
+        const pdmgBase=playerStats.attackDmg*BULLET_PWR_MULT[playerSkills.bulletPower||0]*crystalPowerMult()*gun.dmgMult*rifleDamage;
         const pdmg=Math.max(1,Math.round(pdmgBase));
         if(shotgunOpts&&playerSkills.shotgunAscension&&ruptureCharge.fire()){
           shotgunOpts.rupture=true;
