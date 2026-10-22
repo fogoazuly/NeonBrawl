@@ -1,4 +1,5 @@
-import {cryoReach,cryoSlowTime,cryoBrittle} from './combat/cryo.js';
+import {AbsoluteZeroCharge,cryoReach,cryoSlowTime,cryoBrittle} from './combat/cryo.js';
+const absoluteZeroCharge=new AbsoluteZeroCharge();
 import {GrenadePrimer,SupernovaCharge,grenadeRadius,grenadeCore} from './combat/grenade.js';
 const grenadePrimer=new GrenadePrimer();
 const supernovaCharge=new SupernovaCharge();
@@ -5038,6 +5039,12 @@ function updateGravityAscension(dt,wantFire,cooldownMult=1){
   }
   return true;
 }
+let absoluteZeroHud=null;
+function updateAbsoluteZeroHud(){
+  if(!absoluteZeroHud){absoluteZeroHud=document.createElement('div');absoluteZeroHud.id='absoluteZeroHud';document.body.appendChild(absoluteZeroHud);}
+  absoluteZeroHud.style.display=gState==='playing'&&!player.dead&&player.gun==='cryo'&&playerSkills.cryoAscension?'block':'none';
+  absoluteZeroHud.textContent=absoluteZeroCharge.ready?'ABSOLUTE ZERO • READY • NEXT SHOT: DAMAGE ×4 • FROST BURST':'ABSOLUTE ZERO • '+absoluteZeroCharge.hits+' / 30 shots on slowed targets';
+}
 let supernovaHud=null;
 function updateSupernovaHud(){
   if(!supernovaHud){supernovaHud=document.createElement('div');supernovaHud.id='supernovaHud';document.body.appendChild(supernovaHud);}
@@ -6707,6 +6714,7 @@ function atkScale(){ return (playerStats.attackDmg/25)*crystalPowerMult(); }
 
 const SKILL_DEFS = {
   shotgunAscension:{name:'Rupture',icon:'🌋',requiresGun:'shotgun',desc:['','','','','','Hit at close range with 8 blasts. Next shot also releases a 10m frontal shockwave: 12× pellet damage and 0.4s stagger. Walls block it. Pellets keep all card bonuses; the empowered blast cannot recharge Rupture.']},
+  cryoAscension:{name:'Absolute Zero',icon:'🌨️',requiresGun:'cryo',desc:['','','','','','Land 30 cryo shots on already slowed enemies. Next shot deals 4× damage, staggers for 0.8s and applies 3s slow. Bosses and elites resist control. Charges once per shot; the empowered shot cannot recharge. Reload preserves charge.']},
   cryoReach:{name:'Polar Reach',icon:'❄️',requiresGun:'cryo',desc:['','Cryo cone range +15%','Cryo cone range +25%','','Cryo cone range +35%','Cryo cone range +45%']},
   cryoLingering:{name:'Lingering Frost',icon:'🧊',requiresGun:'cryo',desc:['','Cryo slow lasts at least 0.8s after the last hit (normally 0.48s). Refreshes; does not stack.','','Slow lasts at least 1.1s.','','Slow lasts at least 1.4s.']},
   cryoBrittle:{name:'Brittle Ice',icon:'💎',requiresGun:'cryo',desc:['','Cryo deals +20% damage to enemies already slowed before this hit.','','Damage to slowed enemies +35%.','','Damage to slowed enemies +50%.']},
@@ -6922,7 +6930,7 @@ const OVERHEAL_SHIELD_PCT = [0,    0.12, 0.12,  0.24, 0.24, 0.36];
 
 const SKILL_CATEGORY = {
   eventHorizon:'bullet',unstableCollapse:'bullet',persistentSingularity:'bullet',gravityAscension:'bullet',
-  cryoReach:'bullet',cryoLingering:'bullet',cryoBrittle:'bullet',
+  cryoAscension:'bullet',cryoReach:'bullet',cryoLingering:'bullet',cryoBrittle:'bullet',
   grenadeAscension:'bullet',grenadeRadius:'bullet',grenadeCore:'bullet',grenadePrimer:'bullet',
   burstAscension:'bullet',burstControl:'bullet',burstConvergence:'bullet',burstOpening:'bullet',
   ak47Ascension:'bullet',ak47Control:'bullet',ak47Momentum:'bullet',ak47Tactical:'bullet',
@@ -6990,7 +6998,7 @@ const RARITY_INFO = {
   divine: {label:'DIVINE ASCENSION', max:1, weight:0.001, color:'#fff1ff'},
 };
 const SKILL_RARITY = {
-  cryoReach:'uncommon',cryoLingering:'rare',cryoBrittle:'rare',
+  cryoAscension:'divine',cryoReach:'uncommon',cryoLingering:'rare',cryoBrittle:'rare',
   grenadeAscension:'divine',grenadeRadius:'uncommon',grenadeCore:'rare',grenadePrimer:'rare',
   burstAscension:'divine',burstControl:'uncommon',burstConvergence:'rare',burstOpening:'rare',
   ak47Ascension:'divine',ak47Control:'uncommon',ak47Momentum:'rare',ak47Tactical:'rare',
@@ -9575,7 +9583,7 @@ function localAttackModifiers(){
     relicDmg:relicDamageMult(),hollowPoint:playerSkills.hollowPoint||0,
     explosive:playerSkills.explosive||0,heavyRounds:playerSkills.heavyRounds||0,
     bounce:playerSkills.bounce||0,longShot:playerSkills.longShot||0,
-    cryoReach:skillPickLevel('cryoReach'),cryoLingering:skillPickLevel('cryoLingering'),cryoBrittle:skillPickLevel('cryoBrittle'),
+    cryoAscension:!!playerSkills.cryoAscension,cryoReach:skillPickLevel('cryoReach'),cryoLingering:skillPickLevel('cryoLingering'),cryoBrittle:skillPickLevel('cryoBrittle'),
     grenadeRadius:skillPickLevel('grenadeRadius'),grenadeCore:skillPickLevel('grenadeCore'),grenadeAscension:!!playerSkills.grenadeAscension,
     burstConvergence:skillPickLevel('burstConvergence'),burstAscension:!!playerSkills.burstAscension,
     pistolRicochet:skillPickLevel('pistolRicochet'),pistolPrecision:skillPickLevel('pistolPrecision'),pistolLastWord:skillPickLevel('pistolLastWord'),pistolAscension:!!playerSkills.pistolAscension,shotgunImpact:skillPickLevel('shotgunImpact'),shotgunFocus:skillPickLevel('shotgunFocus'),shotgunAscension:!!playerSkills.shotgunAscension,
@@ -9593,7 +9601,7 @@ function sendSpecialGunMP(gun,x,z,dx,dz,dmg=20,extra=null){
   if(!mp.connected) return;
   const msg={
     type:'GUN_SPECIAL',id:mp.myId,gun:gun.id,x,z,dx,dz,dmg,
-    spread:playerSkills.spread||0,heavyRounds:playerSkills.heavyRounds||0,explosive:playerSkills.explosive||0,charge:extra?.charge||0,
+    spread:playerSkills.spread||0,heavyRounds:playerSkills.heavyRounds||0,explosive:playerSkills.explosive||0,absoluteZero:!!extra?.absoluteZero,charge:extra?.charge||0,
     perm:localAttackModifiers()
   };
   if(mp.isHost) broadcastMP(JSON.stringify(msg));
@@ -9682,6 +9690,9 @@ function applySpecialGunFire(gun,x,z,dx,dz,dmg,ownerId=mp.myId,visualOnly=false,
     }
     flashLight({x:x+dx*1.2,z:z+dz*1.2},gun.color,3.8,5.5,0.10);
   } else if(gun.kind==='cryo'){
+    const absolute=!!(sourcePerm?.cryoAscension&&mods?.absoluteZero);
+    const cryoDamage=dmg*(absolute?4:1);
+    let charged=false;
     const range=((gun.range||5.8)+heavy*1.8)*rangeMul*cryoReach(sourcePerm?.cryoReach);
     const cone=(gun.cone||0.85)+spreadLvl*0.06+heavy*0.14;
     const segments=reflectedRaySegments(x,z,dx,dz,range,bounceCount,0.12);
@@ -9692,18 +9703,22 @@ function applySpecialGunFire(gun,x,z,dx,dz,dmg,ownerId=mp.myId,visualOnly=false,
       const len=Math.max(0.12,rawLen-startOff);
       const startWidth=0.32+heavy*0.18;
       const endWidth=Math.min(7.2,Math.max(2.4,len*Math.tan(cone*0.5)*1.85));
-      spawnFlameCone(seg.x+seg.dx*startOff,seg.z+seg.dz*startOff,seg.dx,seg.dz,len,startWidth,endWidth,gun.color,0.22,0.34);
+      spawnFlameCone(seg.x+seg.dx*startOff,seg.z+seg.dz*startOff,seg.dx,seg.dz,len,startWidth,endWidth,absolute?0xe8ffff:gun.color,absolute?.35:.22,absolute?.7:.34);
       if(!visualOnly){
         const before=new Set(hitSet);
-        damageEnemiesInConeWithSource(seg.x,seg.z,seg.dx,seg.dz,seg.len,cone,dmg,gun.color,0.12,ownerId,sourcePerm,expRank,true,hitSet,e=>cryoBrittle(sourcePerm?.cryoBrittle,(slowMap.get(e.poolIdx)||0)>0));
-        damageMiniObjectiveInCone(seg.x,seg.z,seg.dx,seg.dz,seg.len,cone,dmg,gun.color);
+        damageEnemiesInConeWithSource(seg.x,seg.z,seg.dx,seg.dz,seg.len,cone,cryoDamage,gun.color,absolute?.8:.12,ownerId,sourcePerm,expRank,true,hitSet,e=>{const slowed=(slowMap.get(e.poolIdx)||0)>0;if(slowed)charged=true;return cryoBrittle(sourcePerm?.cryoBrittle,slowed);});
+        damageMiniObjectiveInCone(seg.x,seg.z,seg.dx,seg.dz,seg.len,cone,cryoDamage,gun.color);
         for(const e of enemies){
           if(e.dead||before.has(e.poolIdx)||!hitSet.has(e.poolIdx)) continue;
-          slowMap.set(e.poolIdx,Math.max(slowMap.get(e.poolIdx)||0,cryoSlowTime(sourcePerm?.cryoLingering)));
+          slowMap.set(e.poolIdx,Math.max(slowMap.get(e.poolIdx)||0,absolute?Math.max(cryoSlowTime(sourcePerm?.cryoLingering),3*enemyControlFactor(e)):cryoSlowTime(sourcePerm?.cryoLingering)));
           burst(e.pos,gun.color,isMobile?1:3);
-          if(ownerId===mp.myId) tagElement(e,'ice',dmg);
+          if(ownerId===mp.myId) tagElement(e,'ice',cryoDamage);
         }
       }
+    }
+    if(!visualOnly&&!absolute&&charged&&sourcePerm?.cryoAscension){
+      if(ownerId===mp.myId)absoluteZeroCharge.hit();
+      else if(mp.isHost){const c=mp.conns.get(ownerId);if(c?.open)c.send(JSON.stringify({type:'ABSOLUTE_ZERO_CHARGE',targetId:ownerId}));}
     }
     flashLight({x:x+dx*1.2,z:z+dz*1.2},gun.color,3.4,5.2,0.10);
   } else if(gun.kind==='laser'){
@@ -10706,7 +10721,7 @@ const CARD_ICON_ALIAS = {
   smg:'burst', cryo:'iceOrb', flamethrower:'fireOrb', sniper:'railgun', rpg:'explosive',
   laser:'railgun', minigun:'grenade', boomerang:'boomerang', gravity:'emoji',
   eventHorizon:'emoji',unstableCollapse:'emoji',persistentSingularity:'emoji',gravityAscension:'emoji',
-  cryoReach:'emoji',cryoLingering:'emoji',cryoBrittle:'emoji',
+  cryoAscension:'emoji',cryoReach:'emoji',cryoLingering:'emoji',cryoBrittle:'emoji',
   grenadeAscension:'emoji',grenadeRadius:'emoji',grenadeCore:'emoji',grenadePrimer:'emoji',
   burstAscension:'emoji',burstControl:'emoji',burstConvergence:'emoji',burstOpening:'emoji',
   ak47Ascension:'emoji',ak47Control:'emoji',ak47Momentum:'emoji',ak47Tactical:'emoji',
@@ -11455,6 +11470,9 @@ function handleIncomingMP(msg, fromId){
       if(o) destroyObstacle(o,msg.col||0xffcc33,false);
       break;
     }
+    case 'ABSOLUTE_ZERO_CHARGE':
+      if(!mp.isHost&&msg.targetId===mp.myId&&playerSkills.cryoAscension)absoluteZeroCharge.hit();
+      break;
     case 'SUPERNOVA_CHARGE':
       if(!mp.isHost&&msg.targetId===mp.myId&&playerSkills.grenadeAscension)supernovaCharge.hit();
       break;
@@ -11493,7 +11511,7 @@ function handleIncomingMP(msg, fromId){
       break;
     case 'GUN_SPECIAL': {
       const gun=GUNS[msg.gun]||GUNS.pistol;
-      const mods={spread:msg.spread||0,heavyRounds:msg.heavyRounds||0,explosive:msg.explosive||0,charge:msg.charge||0};
+      const mods={spread:msg.spread||0,heavyRounds:msg.heavyRounds||0,explosive:msg.explosive||0,absoluteZero:!!msg.absoluteZero,charge:msg.charge||0};
       if(mp.isHost){
         applySpecialGunFire(gun,msg.x,msg.z,msg.dx,msg.dz,msg.dmg||20,msg.id,false,false,msg.perm||null,mods);
         playRemoteGunSfx(msg.gun||'pistol');
@@ -11668,7 +11686,7 @@ function startAsClient(spawnPos,mapLayout=0){
   ruptureCharge.reset();
   ak47Rhythm.reset();
   steelStorm.reset();
-  burstSalvos.reset();burstOpening.reset();celestialTriad.reset();grenadePrimer.reset();supernovaCharge.reset();
+  burstSalvos.reset();burstOpening.reset();celestialTriad.reset();grenadePrimer.reset();supernovaCharge.reset();absoluteZeroCharge.reset();
   runScore.begin();
   // Clear any stale input state from the previous run. If the player held LMB
   // or a movement key when game-over fired, the corresponding browser
@@ -14373,7 +14391,7 @@ function initGame(){
   ruptureCharge.reset();
   ak47Rhythm.reset();
   steelStorm.reset();
-  burstSalvos.reset();burstOpening.reset();celestialTriad.reset();grenadePrimer.reset();supernovaCharge.reset();
+  burstSalvos.reset();burstOpening.reset();celestialTriad.reset();grenadePrimer.reset();supernovaCharge.reset();absoluteZeroCharge.reset();
   runScore.begin();
   // See startAsClient for why: stale mouse/key state from the previous run
   // can lock firing or trigger movement on respawn.
@@ -16640,7 +16658,8 @@ function update(dt){
         if(stormShot)spawnShockwave(player.pos.x+fx*.85,player.pos.z+fz*.85,1.15,0xe6c4ff,.2,.7);
         const isSpecialGun=gun.kind==='flame'||gun.kind==='laser'||gun.kind==='cryo';
         if(isSpecialGun){
-          applySpecialGunFire(gun,player.pos.x+fx*0.65,player.pos.z+fz*0.65,fx,fz,pdmg,mp.myId,false,true,null);
+          const absoluteZero=gun.kind==='cryo'&&playerSkills.cryoAscension&&absoluteZeroCharge.fire();
+          applySpecialGunFire(gun,player.pos.x+fx*0.65,player.pos.z+fz*0.65,fx,fz,pdmg,mp.myId,false,true,null,{absoluteZero:!!absoluteZero});
           if(!isMobile) spawnShockwave(player.pos.x+fx*0.78,player.pos.z+fz*0.78,0.7,gun.color,0.12,0.45);
         } else {
         // Helper: turn the aim vector into a slightly randomised vector
@@ -18414,6 +18433,7 @@ function loop(now){
   updateSteelStormHud();
   updateTriadHud();
   updateSupernovaHud();
+  updateAbsoluteZeroHud();
   updateMultiplayerPresence(rdt);
   if(gState!=='playing'&&gState!=='shopround'){ updatePlayerNameTags(); updateReloadTag(); }
   sceneView.render();
