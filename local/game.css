@@ -1023,3 +1023,6 @@ body:has(#joinPopup.show) #crosshair{display:none!important}
 
 #triadHud{position:fixed;bottom:94px;left:50%;transform:translateX(-50%);z-index:35;max-width:90vw;padding:10px 16px;border:1px solid #eccbff;border-radius:10px;color:#fff3df;background:#25133eef;font:600 12px/1.5 system-ui;text-align:center;pointer-events:none;box-shadow:0 0 18px #b578ff55}
 @media(max-width:600px){#triadHud{bottom:155px;font-size:10px;padding:6px 9px;width:88vw}}
+
+#supernovaHud{position:fixed;bottom:94px;left:50%;transform:translateX(-50%);z-index:35;max-width:90vw;padding:10px 16px;border:1px solid #eccbff;border-radius:10px;color:#fff3df;background:#25133eef;font:600 12px/1.5 system-ui;text-align:center;pointer-events:none;box-shadow:0 0 18px #b578ff55}
+@media(max-width:600px){#supernovaHud{bottom:155px;font-size:10px;padding:6px 9px;width:88vw}}

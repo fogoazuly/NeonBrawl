@@ -10,3 +10,11 @@ export class GrenadePrimer{
     return {damage:active?1+[0,.25,.4,.55][n]:1,quick:active};
   }
 }
+
+export class SupernovaCharge{
+  constructor(){this.reset();}
+  reset(){this.hits=0;}
+  get ready(){return this.hits>=8;}
+  hit(){this.hits=Math.min(8,this.hits+1);}
+  fire(){if(!this.ready)return false;this.reset();return true;}
+}
