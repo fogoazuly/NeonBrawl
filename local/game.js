@@ -1,3 +1,5 @@
+import {GrenadePrimer,grenadeRadius,grenadeCore} from './combat/grenade.js';
+const grenadePrimer=new GrenadePrimer();
 import {BurstSalvos,BurstOpening,CelestialTriad,burstSpread} from './combat/burst.js';
 const burstSalvos=new BurstSalvos(),burstOpening=new BurstOpening();
 const celestialTriad=new CelestialTriad();
@@ -4787,6 +4789,7 @@ function fireBullet(pos, dir, isPlayer, dmg, pierce=0, visualOnly=false, ownerPe
   // a previous sniper round's piercing.
   slot.piercesAllies=false;
   if(slot._summonHitSet) slot._summonHitSet.clear();
+  slot.grenadeQuick=!!bulletOpts?.grenadeQuick;
   slot.grenadeY=0.55; slot.grenadeVY=0; slot.groundBounceLeft=0; slot.grenadeGroundT=0; slot.grenadeArmed=false;
   slot.originX=pos.x; slot.originZ=pos.z; slot.maxRange=0; slot.travelDist=0; if(slot.hitSet) slot.hitSet.clear(); else slot.hitSet=new Set();
   slot.delay=Math.max(0,Number(bulletOpts?.delay)||0);
@@ -4876,6 +4879,7 @@ function fireBullet(pos, dir, isPlayer, dmg, pierce=0, visualOnly=false, ownerPe
     if(gunCfg.kind==='grenade'){
       const skillBounce=slot.bounceLeft||0;
       slot.bulletKind='grenade';
+      slot.explodeR*=grenadeRadius(ownerPerm?.grenadeRadius);
       slot.bounceLeft=2;
       slot.groundBounceLeft=skillBounce;
       slot.maxRange=Math.max(1.4,Math.min(gunCfg.range||8.8,Number(bulletOpts?.grenadeTravel)||gunCfg.range||8.8));
@@ -5000,7 +5004,7 @@ function fireSpreadShots(gun,fx,fz,pdmg,pierceLvl,extra={}){
     const a=angles[i]*(i%2===0?1:-1),c=Math.cos(a),s=Math.sin(a);
     const dx=fx*c-fz*s,dz=fx*s+fz*c;
     const dmg=Math.max(1,Math.round(pdmg*.45));
-    const opts=gun.kind==='gravity'?{gravityTravel:gravityAimTravel(gun,player.pos.x,player.pos.z),...extra}:gun.kind==='grenade'?{grenadeTravel:grenadeAimTravel(gun,player.pos.x,player.pos.z)}:gun.id==='pistol'?{...extra,pistolPrimary:false}:gun.id==='shotgun'?extra:null;
+    const opts=gun.kind==='gravity'?{gravityTravel:gravityAimTravel(gun,player.pos.x,player.pos.z),...extra}:gun.kind==='grenade'?{grenadeTravel:grenadeAimTravel(gun,player.pos.x,player.pos.z),...extra}:gun.id==='pistol'?{...extra,pistolPrimary:false}:gun.id==='shotgun'?extra:null;
     const b=fireBullet(player.pos,_scratchDir.set(dx,0,dz),true,dmg,pierceLvl,false,null,mp.myId,null,opts);
     if(b)sendFireMP(player.pos.x,player.pos.z,dx,dz,dmg,pierceLvl,opts);
   }
@@ -6692,6 +6696,9 @@ function atkScale(){ return (playerStats.attackDmg/25)*crystalPowerMult(); }
 
 const SKILL_DEFS = {
   shotgunAscension:{name:'Rupture',icon:'🌋',requiresGun:'shotgun',desc:['','','','','','Hit at close range with 8 blasts. Next shot also releases a 10m frontal shockwave: 12× pellet damage and 0.4s stagger. Walls block it. Pellets keep all card bonuses; the empowered blast cannot recharge Rupture.']},
+  grenadeRadius:{name:'Blast Envelope',icon:'💥',requiresGun:'grenade',desc:['','Grenade explosion radius +15%','Grenade explosion radius +25%','','Grenade explosion radius +35%','Grenade explosion radius +45%']},
+  grenadeCore:{name:'Epicenter',icon:'🎯',requiresGun:'grenade',desc:['','Grenade explosions deal +30% damage within the inner 40% of their radius.','','Inner blast damage +50%.','','Inner blast damage +70%.']},
+  grenadePrimer:{name:'Hot Chamber',icon:'🔥',requiresGun:'grenade',desc:['','After reloading, the next shot deals +25% damage and its grounded fuse lasts 0.5s instead of 1s. Includes extra grenades. Switching weapon cancels it.','','Next shot deals +40% damage with the short grounded fuse.','','Next shot deals +55% damage with the short grounded fuse.']},
   burstAscension:{name:'Celestial Triad',icon:'🌠',requiresGun:'burst',desc:['','','','','','Land all 3 primary rounds on one target in 6 bursts. Your next burst deals triple damage and pierces 3 more enemies, including extra projectiles. Each burst charges once; empowered bursts cannot recharge. Reload preserves charge.']},
   burstControl:{name:'Tight Formation',icon:'🎯',requiresGun:'burst',desc:['','Burst Rifle: 20% less dispersion','Burst Rifle: 30% less dispersion','','Burst Rifle: 40% less dispersion','Burst Rifle: 50% less dispersion']},
   burstConvergence:{name:'Triple Impact',icon:'💥',requiresGun:'burst',desc:['','Hit one target with all 3 primary rounds of a burst: the completing hit deals +50% damage. Extra projectiles do not count.','','Completing hit deals +80% damage.','','Completing hit deals +110% damage.']},
@@ -6900,6 +6907,7 @@ const OVERHEAL_SHIELD_PCT = [0,    0.12, 0.12,  0.24, 0.24, 0.36];
 
 const SKILL_CATEGORY = {
   eventHorizon:'bullet',unstableCollapse:'bullet',persistentSingularity:'bullet',gravityAscension:'bullet',
+  grenadeRadius:'bullet',grenadeCore:'bullet',grenadePrimer:'bullet',
   burstAscension:'bullet',burstControl:'bullet',burstConvergence:'bullet',burstOpening:'bullet',
   ak47Ascension:'bullet',ak47Control:'bullet',ak47Momentum:'bullet',ak47Tactical:'bullet',
   pistolRicochet:'bullet',pistolPrecision:'bullet',pistolLastWord:'bullet',pistolAscension:'bullet',shotgunImpact:'bullet',shotgunRain:'bullet',shotgunFocus:'bullet',shotgunAscension:'bullet',
@@ -6966,6 +6974,7 @@ const RARITY_INFO = {
   divine: {label:'DIVINE ASCENSION', max:1, weight:0.001, color:'#fff1ff'},
 };
 const SKILL_RARITY = {
+  grenadeRadius:'uncommon',grenadeCore:'rare',grenadePrimer:'rare',
   burstAscension:'divine',burstControl:'uncommon',burstConvergence:'rare',burstOpening:'rare',
   ak47Ascension:'divine',ak47Control:'uncommon',ak47Momentum:'rare',ak47Tactical:'rare',
   eventHorizon:'uncommon', unstableCollapse:'rare', persistentSingularity:'rare', gravityAscension:'divine',
@@ -7627,7 +7636,7 @@ function armPlayerGrenade(b, color=0xffb84d){
   if(!b||!b.explodeR) return false;
   if(b.grenadeArmed) return true;
   b.grenadeArmed=true;
-  b.grenadeGroundT=1.0;
+  b.grenadeGroundT=b.grenadeQuick ? 0.5 : 1.0;
   b.grenadeY=0.18;
   b.grenadeVY=0;
   b.spd=0;
@@ -7635,7 +7644,7 @@ function armPlayerGrenade(b, color=0xffb84d){
   b.groundBounceLeft=0;
   b.life=Math.max(b.life,1.08);
   const r=bulletExplosionRadius(b);
-  spawnWarningCircle(b.pos.x,b.pos.z,r,color,1.0,null,false);
+  spawnWarningCircle(b.pos.x,b.pos.z,r,color,b.grenadeGroundT,null,false);
   spawnShockwave(b.pos.x,b.pos.z,Math.min(1.25,r*0.32),color,0.18,0.34);
   burst(b.pos,color,isMobile?4:8);
   if(b.isPlayer) sGrenadeArm();
@@ -7686,7 +7695,7 @@ function explodePlayerBullet(b, color=0xff6600, skipIdx=-1){
     const d=Math.hypot(e.pos.x-b.pos.x,e.pos.z-b.pos.z);
     if(d<=r+e.cfg.r){
       const fall=1-Math.min(0.65,d/Math.max(1,r))*0.55;
-      damageEnemyWithSource(i,Math.max(1,Math.round((b.dmg||20)*(b.explodeMult||0.65)*fall)),color,0.18,b.ownerId??mp.myId,b.ownerPerm,'bullet');
+      damageEnemyWithSource(i,Math.max(1,Math.round((b.dmg||20)*(b.explodeMult||0.65)*fall*(b.bulletKind==='grenade'?grenadeCore(b.ownerPerm?.grenadeCore,d,r):1))),color,0.18,b.ownerId??mp.myId,b.ownerPerm,'bullet');
     }
   }
   // Spawner damage from explosions (grenade / RPG / volatile-bullet). Without
@@ -7698,7 +7707,7 @@ function explodePlayerBullet(b, color=0xff6600, skipIdx=-1){
       const d=Math.hypot(sp.x-b.pos.x,sp.z-b.pos.z);
       if(d<=r+0.6){
         const fall=1-Math.min(0.65,d/Math.max(1,r))*0.55;
-        damageMiniObjectiveAt(sp.x,sp.z,Math.max(1,Math.round((b.dmg||20)*(b.explodeMult||0.65)*fall)),0.5,color);
+        damageMiniObjectiveAt(sp.x,sp.z,Math.max(1,Math.round((b.dmg||20)*(b.explodeMult||0.65)*fall*(b.bulletKind==='grenade'?grenadeCore(b.ownerPerm?.grenadeCore,d,r):1))),0.5,color);
       }
     }
   }
@@ -9542,6 +9551,7 @@ function localAttackModifiers(){
     relicDmg:relicDamageMult(),hollowPoint:playerSkills.hollowPoint||0,
     explosive:playerSkills.explosive||0,heavyRounds:playerSkills.heavyRounds||0,
     bounce:playerSkills.bounce||0,longShot:playerSkills.longShot||0,
+    grenadeRadius:skillPickLevel('grenadeRadius'),grenadeCore:skillPickLevel('grenadeCore'),
     burstConvergence:skillPickLevel('burstConvergence'),burstAscension:!!playerSkills.burstAscension,
     pistolRicochet:skillPickLevel('pistolRicochet'),pistolPrecision:skillPickLevel('pistolPrecision'),pistolLastWord:skillPickLevel('pistolLastWord'),pistolAscension:!!playerSkills.pistolAscension,shotgunImpact:skillPickLevel('shotgunImpact'),shotgunFocus:skillPickLevel('shotgunFocus'),shotgunAscension:!!playerSkills.shotgunAscension,
     gravityRadius:skillPickLevel('eventHorizon'),gravityCollapse:skillPickLevel('unstableCollapse'),
@@ -9549,7 +9559,7 @@ function localAttackModifiers(){
 }
 function sendFireMP(x,z,dx,dz,dmg=25,pierce=0,extra=null){
   if(!mp.connected) return;
-  const msg={type:'FIRE',id:mp.myId,x,z,dx,dz,dmg,pierce,gun:player?.gun||'pistol',grenadeTravel:extra?.grenadeTravel||0,gravityTravel:extra?.gravityTravel,gravityCharge:extra?.gravityCharge,delay:extra?.delay||0,pistolShot:!!extra?.pistolShot,pistolPrimary:!!extra?.pistolPrimary,pistolLast:!!extra?.pistolLast,pistolJudgment:!!extra?.pistolJudgment,triad:!!extra?.triad,burstSalvo:extra?.burstSalvo,burstIndex:extra?.burstIndex,shotgunSalvo:extra?.shotgunSalvo,rupture:!!extra?.rupture,perm:localAttackModifiers()};
+  const msg={type:'FIRE',id:mp.myId,x,z,dx,dz,dmg,pierce,gun:player?.gun||'pistol',grenadeQuick:!!extra?.grenadeQuick,grenadeTravel:extra?.grenadeTravel||0,gravityTravel:extra?.gravityTravel,gravityCharge:extra?.gravityCharge,delay:extra?.delay||0,pistolShot:!!extra?.pistolShot,pistolPrimary:!!extra?.pistolPrimary,pistolLast:!!extra?.pistolLast,pistolJudgment:!!extra?.pistolJudgment,triad:!!extra?.triad,burstSalvo:extra?.burstSalvo,burstIndex:extra?.burstIndex,shotgunSalvo:extra?.shotgunSalvo,rupture:!!extra?.rupture,perm:localAttackModifiers()};
   if(mp.isHost) broadcastMP(JSON.stringify(msg));
   else sendToHost(JSON.stringify(msg));
 }
@@ -10671,6 +10681,7 @@ const CARD_ICON_ALIAS = {
   smg:'burst', cryo:'iceOrb', flamethrower:'fireOrb', sniper:'railgun', rpg:'explosive',
   laser:'railgun', minigun:'grenade', boomerang:'boomerang', gravity:'emoji',
   eventHorizon:'emoji',unstableCollapse:'emoji',persistentSingularity:'emoji',gravityAscension:'emoji',
+  grenadeRadius:'emoji',grenadeCore:'emoji',grenadePrimer:'emoji',
   burstAscension:'emoji',burstControl:'emoji',burstConvergence:'emoji',burstOpening:'emoji',
   ak47Ascension:'emoji',ak47Control:'emoji',ak47Momentum:'emoji',ak47Tactical:'emoji',
   pistolRicochet:'emoji',pistolPrecision:'emoji',pistolLastWord:'emoji',pistolAscension:'emoji',shotgunImpact:'emoji',shotgunRain:'emoji',shotgunFocus:'emoji',shotgunAscension:'emoji',
@@ -11441,12 +11452,12 @@ function handleIncomingMP(msg, fromId){
         // Pass msg.gun so the host's local render of this remote shot uses
         // the right bullet visual; the host then re-broadcasts the same
         // msg.gun out to peers.
-        fireBullet({x:msg.x,z:msg.z},_scratchDir.set(msg.dx,0,msg.dz),true,msg.dmg||25,msg.pierce||0,false,msg.perm||null,msg.id,msg.gun||'pistol',{grenadeTravel:msg.grenadeTravel||0,gravityTravel:msg.gravityTravel,gravityCharge:msg.gravityCharge,delay:msg.delay||0,pistolShot:!!msg.pistolShot,pistolPrimary:!!msg.pistolPrimary,pistolLast:!!msg.pistolLast,pistolJudgment:!!msg.pistolJudgment,triad:!!msg.triad,burstSalvo:typeof msg.burstSalvo==='string'?msg.burstSalvo.slice(0,64):undefined,burstIndex:msg.burstIndex,shotgunSalvo:typeof msg.shotgunSalvo==='string'?msg.shotgunSalvo.slice(0,64):undefined,rupture:!!msg.rupture});
+        fireBullet({x:msg.x,z:msg.z},_scratchDir.set(msg.dx,0,msg.dz),true,msg.dmg||25,msg.pierce||0,false,msg.perm||null,msg.id,msg.gun||'pistol',{grenadeQuick:!!msg.grenadeQuick,grenadeTravel:msg.grenadeTravel||0,gravityTravel:msg.gravityTravel,gravityCharge:msg.gravityCharge,delay:msg.delay||0,pistolShot:!!msg.pistolShot,pistolPrimary:!!msg.pistolPrimary,pistolLast:!!msg.pistolLast,pistolJudgment:!!msg.pistolJudgment,triad:!!msg.triad,burstSalvo:typeof msg.burstSalvo==='string'?msg.burstSalvo.slice(0,64):undefined,burstIndex:msg.burstIndex,shotgunSalvo:typeof msg.shotgunSalvo==='string'?msg.shotgunSalvo.slice(0,64):undefined,rupture:!!msg.rupture});
         if(!(msg.delay>0)) burst({x:msg.x,z:msg.z},PLAYER_COLORS[msg.id%MAX_PLAYERS].body,isMobile?2:4);
         playRemoteGunSfx(msg.gun||'pistol');
         broadcastMP(JSON.stringify(msg), fromId); // forward to all other clients
       } else if(msg.id !== mp.myId){
-        fireBullet({x:msg.x,z:msg.z},_scratchDir.set(msg.dx,0,msg.dz),true,msg.dmg||25,msg.pierce||0,true,msg.perm||null,msg.id,msg.gun||'pistol',{grenadeTravel:msg.grenadeTravel||0,gravityTravel:msg.gravityTravel,gravityCharge:msg.gravityCharge,delay:msg.delay||0,pistolShot:!!msg.pistolShot,pistolPrimary:!!msg.pistolPrimary,pistolLast:!!msg.pistolLast,pistolJudgment:!!msg.pistolJudgment,triad:!!msg.triad,burstSalvo:typeof msg.burstSalvo==='string'?msg.burstSalvo.slice(0,64):undefined,burstIndex:msg.burstIndex,shotgunSalvo:typeof msg.shotgunSalvo==='string'?msg.shotgunSalvo.slice(0,64):undefined,rupture:!!msg.rupture});
+        fireBullet({x:msg.x,z:msg.z},_scratchDir.set(msg.dx,0,msg.dz),true,msg.dmg||25,msg.pierce||0,true,msg.perm||null,msg.id,msg.gun||'pistol',{grenadeQuick:!!msg.grenadeQuick,grenadeTravel:msg.grenadeTravel||0,gravityTravel:msg.gravityTravel,gravityCharge:msg.gravityCharge,delay:msg.delay||0,pistolShot:!!msg.pistolShot,pistolPrimary:!!msg.pistolPrimary,pistolLast:!!msg.pistolLast,pistolJudgment:!!msg.pistolJudgment,triad:!!msg.triad,burstSalvo:typeof msg.burstSalvo==='string'?msg.burstSalvo.slice(0,64):undefined,burstIndex:msg.burstIndex,shotgunSalvo:typeof msg.shotgunSalvo==='string'?msg.shotgunSalvo.slice(0,64):undefined,rupture:!!msg.rupture});
         if(!(msg.delay>0)) burst({x:msg.x,z:msg.z},PLAYER_COLORS[msg.id%MAX_PLAYERS].body,isMobile?2:4);
         playRemoteGunSfx(msg.gun||'pistol');
       }
@@ -11628,7 +11639,7 @@ function startAsClient(spawnPos,mapLayout=0){
   ruptureCharge.reset();
   ak47Rhythm.reset();
   steelStorm.reset();
-  burstSalvos.reset();burstOpening.reset();celestialTriad.reset();
+  burstSalvos.reset();burstOpening.reset();celestialTriad.reset();grenadePrimer.reset();
   runScore.begin();
   // Clear any stale input state from the previous run. If the player held LMB
   // or a movement key when game-over fired, the corresponding browser
@@ -14333,7 +14344,7 @@ function initGame(){
   ruptureCharge.reset();
   ak47Rhythm.reset();
   steelStorm.reset();
-  burstSalvos.reset();burstOpening.reset();celestialTriad.reset();
+  burstSalvos.reset();burstOpening.reset();celestialTriad.reset();grenadePrimer.reset();
   runScore.begin();
   // See startAsClient for why: stale mouse/key state from the previous run
   // can lock firing or trigger movement on respawn.
@@ -16244,6 +16255,7 @@ function updateLinkerVisuals(){
   linkerBeams.visible=count>0&&gState==='playing';
 }
 function update(dt){
+  if(player.gun!=='grenade')grenadePrimer.reset();
   if(player.gun!=='burst')burstOpening.reset();
   ak47Rhythm.tick(dt,player.gun==='ak47',player.reloadT>0);
   steelStorm.tick(dt,player.gun==='ak47'&&!!playerSkills.ak47Ascension);
@@ -16470,7 +16482,7 @@ function update(dt){
     // so the reload state advances even if the player isn't holding fire.
     if(player.reloadT>0){
       player.reloadT=Math.max(0,player.reloadT-dt);
-      if(player.reloadT<=0){ player.ammo=currentMagSize(); if(player.gun==='burst')burstOpening.reload(); if(player.gun==='pistol'&&playerSkills.pistolAscension)pistolJudgment.reload(player.ammo); sReloadEnd(); }
+      if(player.reloadT<=0){ player.ammo=currentMagSize(); if(player.gun==='burst')burstOpening.reload(); if(player.gun==='grenade')grenadePrimer.reload(); if(player.gun==='pistol'&&playerSkills.pistolAscension)pistolJudgment.reload(player.ammo); sReloadEnd(); }
     }
     const rfMult=([1,0.85,0.72,0.60,0.50,0.40][playerSkills.rapidFire||0])||1;
     const fireRateMult=PERM_CD_MULT[persistData.upgrades.fireRate||0]||1;
@@ -16547,6 +16559,7 @@ function update(dt){
     while(!gravityHandled&&activeGun.id!=='railgun'&&wantFire&&player.fireCd<=0&&player.reloadT<=0&&player.ammo>0&&primaryCatchupShots<PRIMARY_FIRE_CATCHUP_MAX){
       primaryCatchupShots++;
       const gun=activeGun;
+      const grenadeShot=gun.id==='grenade'?grenadePrimer.fire(skillPickLevel('grenadePrimer')):{damage:1,quick:false};
       const triadShot=gun.id==='burst'&&playerSkills.burstAscension&&celestialTriad.fire();
       const burstOpts=gun.id==='burst'?{burstSalvo:runGeneration+':'+(++burstSequence),triad:!!triadShot}:null;
       const burstDamage=burstOpts?burstOpening.fire(skillPickLevel('burstOpening'))*(triadShot?3:1):1;
@@ -16585,7 +16598,7 @@ function update(dt){
       if(Math.hypot(fx,fz)>0.1){
         // Crystal Force scales every bullet; gun.dmgMult is per-pellet so
         // shotguns deal small per-pellet damage but stack via 12 pellets.
-        const pdmgBase=playerStats.attackDmg*BULLET_PWR_MULT[playerSkills.bulletPower||0]*crystalPowerMult()*gun.dmgMult*rifleDamage*burstDamage;
+        const pdmgBase=playerStats.attackDmg*BULLET_PWR_MULT[playerSkills.bulletPower||0]*crystalPowerMult()*gun.dmgMult*rifleDamage*burstDamage*grenadeShot.damage;
         const pdmg=Math.max(1,Math.round(pdmgBase));
         if(shotgunOpts&&playerSkills.shotgunAscension&&ruptureCharge.fire()){
           shotgunOpts.rupture=true;
@@ -16624,7 +16637,7 @@ function update(dt){
           const rowDelay=shotgunRow ? 0.055 : 0;
           const muzzleDist=gun.id==='shotgun' ? (shotgunRow ? 0.78 : 0.96) : 0.95;
           const sbx=player.pos.x+sx*muzzleDist, sbz=player.pos.z+sz*muzzleDist;
-          const bulletOpts=gun.kind==='gravity' ? {gravityTravel:gravityAimTravel(gun,sbx,sbz)} : gun.kind==='grenade' ? {grenadeTravel:grenadeAimTravel(gun,sbx,sbz)} : pistolOpts || (burstOpts?{...burstOpts,burstIndex:pelletI}:null) || (shotgunOpts ? {...shotgunOpts,delay:rowDelay} : null);
+          const bulletOpts=gun.kind==='gravity' ? {gravityTravel:gravityAimTravel(gun,sbx,sbz)} : gun.kind==='grenade' ? {grenadeTravel:grenadeAimTravel(gun,sbx,sbz),grenadeQuick:grenadeShot.quick} : pistolOpts || (burstOpts?{...burstOpts,burstIndex:pelletI}:null) || (shotgunOpts ? {...shotgunOpts,delay:rowDelay} : null);
           const slot=fireBullet({x:sbx,z:sbz},_scratchDir.set(sx,0,sz),true,pdmg,pierceLvl,false,null,mp.myId,null,bulletOpts);
           // Shotgun pellets carry per-bullet falloff. Origin is the muzzle
           // position; at hit time the bullet code scales damage by how far
@@ -16648,7 +16661,7 @@ function update(dt){
         // Muzzle puff scaled by pellet count so shotguns visibly punch harder.
         if(!isMobile) spawnShockwave(player.pos.x+fx*0.85,player.pos.z+fz*0.85,
           pattern.pellets>1?0.95:0.65, gun.color, 0.16, pattern.pellets>1?0.78:0.6);
-        fireSpreadShots(gun,fx,fz,pdmg,pierceLvl,pistolOpts||shotgunOpts||{});
+        fireSpreadShots(gun,fx,fz,pdmg,pierceLvl,pistolOpts||shotgunOpts||(gun.id==='grenade'?{grenadeQuick:grenadeShot.quick}:{}));
         }
         tickShotCounterEpics(fx,fz,pdmg,pierceLvl);
         noteWaveEventGunFire();
