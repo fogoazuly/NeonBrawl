@@ -1,3 +1,4 @@
+import {cryoReach,cryoSlowTime,cryoBrittle} from './combat/cryo.js';
 import {GrenadePrimer,SupernovaCharge,grenadeRadius,grenadeCore} from './combat/grenade.js';
 const grenadePrimer=new GrenadePrimer();
 const supernovaCharge=new SupernovaCharge();
@@ -6706,6 +6707,9 @@ function atkScale(){ return (playerStats.attackDmg/25)*crystalPowerMult(); }
 
 const SKILL_DEFS = {
   shotgunAscension:{name:'Rupture',icon:'🌋',requiresGun:'shotgun',desc:['','','','','','Hit at close range with 8 blasts. Next shot also releases a 10m frontal shockwave: 12× pellet damage and 0.4s stagger. Walls block it. Pellets keep all card bonuses; the empowered blast cannot recharge Rupture.']},
+  cryoReach:{name:'Polar Reach',icon:'❄️',requiresGun:'cryo',desc:['','Cryo cone range +15%','Cryo cone range +25%','','Cryo cone range +35%','Cryo cone range +45%']},
+  cryoLingering:{name:'Lingering Frost',icon:'🧊',requiresGun:'cryo',desc:['','Cryo slow lasts at least 0.8s after the last hit (normally 0.48s). Refreshes; does not stack.','','Slow lasts at least 1.1s.','','Slow lasts at least 1.4s.']},
+  cryoBrittle:{name:'Brittle Ice',icon:'💎',requiresGun:'cryo',desc:['','Cryo deals +20% damage to enemies already slowed before this hit.','','Damage to slowed enemies +35%.','','Damage to slowed enemies +50%.']},
   grenadeAscension:{name:'Supernova',icon:'☀️',requiresGun:'grenade',desc:['','','','','','Hit 2 or more enemies with one primary grenade explosion, 8 times. Your next shot deals triple damage with +50% base blast radius, including extra grenades. Extra and empowered grenades cannot charge it. Reload preserves charge.']},
   grenadeRadius:{name:'Blast Envelope',icon:'💥',requiresGun:'grenade',desc:['','Grenade explosion radius +15%','Grenade explosion radius +25%','','Grenade explosion radius +35%','Grenade explosion radius +45%']},
   grenadeCore:{name:'Epicenter',icon:'🎯',requiresGun:'grenade',desc:['','Grenade explosions deal +30% damage within the inner 40% of their radius.','','Inner blast damage +50%.','','Inner blast damage +70%.']},
@@ -6918,6 +6922,7 @@ const OVERHEAL_SHIELD_PCT = [0,    0.12, 0.12,  0.24, 0.24, 0.36];
 
 const SKILL_CATEGORY = {
   eventHorizon:'bullet',unstableCollapse:'bullet',persistentSingularity:'bullet',gravityAscension:'bullet',
+  cryoReach:'bullet',cryoLingering:'bullet',cryoBrittle:'bullet',
   grenadeAscension:'bullet',grenadeRadius:'bullet',grenadeCore:'bullet',grenadePrimer:'bullet',
   burstAscension:'bullet',burstControl:'bullet',burstConvergence:'bullet',burstOpening:'bullet',
   ak47Ascension:'bullet',ak47Control:'bullet',ak47Momentum:'bullet',ak47Tactical:'bullet',
@@ -6985,6 +6990,7 @@ const RARITY_INFO = {
   divine: {label:'DIVINE ASCENSION', max:1, weight:0.001, color:'#fff1ff'},
 };
 const SKILL_RARITY = {
+  cryoReach:'uncommon',cryoLingering:'rare',cryoBrittle:'rare',
   grenadeAscension:'divine',grenadeRadius:'uncommon',grenadeCore:'rare',grenadePrimer:'rare',
   burstAscension:'divine',burstControl:'uncommon',burstConvergence:'rare',burstOpening:'rare',
   ak47Ascension:'divine',ak47Control:'uncommon',ak47Momentum:'rare',ak47Tactical:'rare',
@@ -9569,6 +9575,7 @@ function localAttackModifiers(){
     relicDmg:relicDamageMult(),hollowPoint:playerSkills.hollowPoint||0,
     explosive:playerSkills.explosive||0,heavyRounds:playerSkills.heavyRounds||0,
     bounce:playerSkills.bounce||0,longShot:playerSkills.longShot||0,
+    cryoReach:skillPickLevel('cryoReach'),cryoLingering:skillPickLevel('cryoLingering'),cryoBrittle:skillPickLevel('cryoBrittle'),
     grenadeRadius:skillPickLevel('grenadeRadius'),grenadeCore:skillPickLevel('grenadeCore'),grenadeAscension:!!playerSkills.grenadeAscension,
     burstConvergence:skillPickLevel('burstConvergence'),burstAscension:!!playerSkills.burstAscension,
     pistolRicochet:skillPickLevel('pistolRicochet'),pistolPrecision:skillPickLevel('pistolPrecision'),pistolLastWord:skillPickLevel('pistolLastWord'),pistolAscension:!!playerSkills.pistolAscension,shotgunImpact:skillPickLevel('shotgunImpact'),shotgunFocus:skillPickLevel('shotgunFocus'),shotgunAscension:!!playerSkills.shotgunAscension,
@@ -9593,7 +9600,7 @@ function sendSpecialGunMP(gun,x,z,dx,dz,dmg=20,extra=null){
   else sendToHost(JSON.stringify(msg));
 }
 
-function damageEnemiesInConeWithSource(x,z,dx,dz,range,cone,dmg,color,stagger,ownerId,sourcePerm,expRank=null,blockWalls=false,hitSet=null){
+function damageEnemiesInConeWithSource(x,z,dx,dz,range,cone,dmg,color,stagger,ownerId,sourcePerm,expRank=null,blockWalls=false,hitSet=null,damageMultiplier=null){
   const dl=Math.hypot(dx,dz)||1; dx/=dl; dz/=dl;
   const minDot=Math.cos(cone*0.5);
   const targets=[];
@@ -9612,7 +9619,7 @@ function damageEnemiesInConeWithSource(x,z,dx,dz,range,cone,dmg,color,stagger,ow
   for(const t of targets){
     const e=t.e; if(!e||e.dead) continue;
     const idx=enemies.indexOf(e); if(idx<0) continue;
-    const adjDmg=Math.max(1,Math.round(dmg*pierceFalloffMult(hits)));
+    const adjDmg=Math.max(1,Math.round(dmg*pierceFalloffMult(hits)*(damageMultiplier?damageMultiplier(e):1)));
     damageEnemyWithSource(idx,adjDmg,color,stagger,ownerId,sourcePerm,'bullet');
     if(hitSet) hitSet.add(e.poolIdx);
     hits++;
@@ -9675,7 +9682,7 @@ function applySpecialGunFire(gun,x,z,dx,dz,dmg,ownerId=mp.myId,visualOnly=false,
     }
     flashLight({x:x+dx*1.2,z:z+dz*1.2},gun.color,3.8,5.5,0.10);
   } else if(gun.kind==='cryo'){
-    const range=((gun.range||5.8)+heavy*1.8)*rangeMul;
+    const range=((gun.range||5.8)+heavy*1.8)*rangeMul*cryoReach(sourcePerm?.cryoReach);
     const cone=(gun.cone||0.85)+spreadLvl*0.06+heavy*0.14;
     const segments=reflectedRaySegments(x,z,dx,dz,range,bounceCount,0.12);
     const hitSet=new Set();
@@ -9688,11 +9695,11 @@ function applySpecialGunFire(gun,x,z,dx,dz,dmg,ownerId=mp.myId,visualOnly=false,
       spawnFlameCone(seg.x+seg.dx*startOff,seg.z+seg.dz*startOff,seg.dx,seg.dz,len,startWidth,endWidth,gun.color,0.22,0.34);
       if(!visualOnly){
         const before=new Set(hitSet);
-        damageEnemiesInConeWithSource(seg.x,seg.z,seg.dx,seg.dz,seg.len,cone,dmg,gun.color,0.12,ownerId,sourcePerm,expRank,true,hitSet);
+        damageEnemiesInConeWithSource(seg.x,seg.z,seg.dx,seg.dz,seg.len,cone,dmg,gun.color,0.12,ownerId,sourcePerm,expRank,true,hitSet,e=>cryoBrittle(sourcePerm?.cryoBrittle,(slowMap.get(e.poolIdx)||0)>0));
         damageMiniObjectiveInCone(seg.x,seg.z,seg.dx,seg.dz,seg.len,cone,dmg,gun.color);
         for(const e of enemies){
           if(e.dead||before.has(e.poolIdx)||!hitSet.has(e.poolIdx)) continue;
-          slowMap.set(e.poolIdx,Math.max(slowMap.get(e.poolIdx)||0,0.48));
+          slowMap.set(e.poolIdx,Math.max(slowMap.get(e.poolIdx)||0,cryoSlowTime(sourcePerm?.cryoLingering)));
           burst(e.pos,gun.color,isMobile?1:3);
           if(ownerId===mp.myId) tagElement(e,'ice',dmg);
         }
@@ -10699,6 +10706,7 @@ const CARD_ICON_ALIAS = {
   smg:'burst', cryo:'iceOrb', flamethrower:'fireOrb', sniper:'railgun', rpg:'explosive',
   laser:'railgun', minigun:'grenade', boomerang:'boomerang', gravity:'emoji',
   eventHorizon:'emoji',unstableCollapse:'emoji',persistentSingularity:'emoji',gravityAscension:'emoji',
+  cryoReach:'emoji',cryoLingering:'emoji',cryoBrittle:'emoji',
   grenadeAscension:'emoji',grenadeRadius:'emoji',grenadeCore:'emoji',grenadePrimer:'emoji',
   burstAscension:'emoji',burstControl:'emoji',burstConvergence:'emoji',burstOpening:'emoji',
   ak47Ascension:'emoji',ak47Control:'emoji',ak47Momentum:'emoji',ak47Tactical:'emoji',
