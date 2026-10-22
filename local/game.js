@@ -1,3 +1,6 @@
+import {BurstSalvos,BurstOpening,burstSpread} from './combat/burst.js';
+const burstSalvos=new BurstSalvos(),burstOpening=new BurstOpening();
+let burstSequence=0;
 import { RifleRhythm, SteelStorm, ak47Spread } from './combat/ak47.js';
 const ak47Rhythm=new RifleRhythm();
 const steelStorm=new SteelStorm();
@@ -4772,6 +4775,8 @@ function fireBullet(pos, dir, isPlayer, dmg, pierce=0, visualOnly=false, ownerPe
   slot.spd=isPlayer?BULLET_SPD:ENEMY_BULLET_SPD; slot.life=isPlayer?2.2:2.9; slot.dmg=dmg; slot.pierce=pierce; slot.ownerPerm=ownerPerm; slot.ownerId=isPlayer?ownerId:null;
   slot.pistolShot=null; slot.pistolRicochet=0; slot.judgmentCharge=false;
   slot.shotgunSalvo=isPlayer&&gunCfg?.id==='shotgun'&&typeof bulletOpts?.shotgunSalvo==='string'&&!visualOnly&&(mp.soloMode||mp.isHost)?shotgunSalvos.acquire(ownerId,bulletOpts.shotgunSalvo):null;
+  slot.burstSalvo=isPlayer&&gunCfg?.id==='burst'&&typeof bulletOpts?.burstSalvo==='string'&&!visualOnly&&(mp.soloMode||mp.isHost)?burstSalvos.acquire(ownerId,bulletOpts.burstSalvo):null;
+  slot.burstIndex=bulletOpts?.burstIndex;
   slot.ruptureCharging=!!(slot.shotgunSalvo&&ownerPerm?.shotgunAscension&&!bulletOpts?.rupture);
   slot.bounceLeft=isPlayer ? BOUNCE_MAX[ownerPerm?.bounce ?? (playerSkills.bounce||0)] : 0;
   slot.mesh.rotation.x=0;
@@ -4889,6 +4894,7 @@ function fireBullet(pos, dir, isPlayer, dmg, pierce=0, visualOnly=false, ownerPe
 }
 function releaseBullet(slot){
   if(slot.active)pistolPrecision.finish(slot.pistolShot,false);
+  burstSalvos.release(slot.burstSalvo);slot.burstSalvo=null;slot.burstIndex=null;
   shotgunSalvos.release(slot.shotgunSalvo);slot.shotgunSalvo=null;slot.ruptureCharging=false;
   slot.pistolShot=null;slot.pistolRicochet=0;slot.judgmentCharge=false;
   if(slot.gravityRing) slot.gravityRing.visible=false;
@@ -6678,6 +6684,9 @@ function atkScale(){ return (playerStats.attackDmg/25)*crystalPowerMult(); }
 
 const SKILL_DEFS = {
   shotgunAscension:{name:'Rupture',icon:'🌋',requiresGun:'shotgun',desc:['','','','','','Hit at close range with 8 blasts. Next shot also releases a 10m frontal shockwave: 12× pellet damage and 0.4s stagger. Walls block it. Pellets keep all card bonuses; the empowered blast cannot recharge Rupture.']},
+  burstControl:{name:'Tight Formation',icon:'🎯',requiresGun:'burst',desc:['','Burst Rifle: 20% less dispersion','Burst Rifle: 30% less dispersion','','Burst Rifle: 40% less dispersion','Burst Rifle: 50% less dispersion']},
+  burstConvergence:{name:'Triple Impact',icon:'💥',requiresGun:'burst',desc:['','Hit one target with all 3 primary rounds of a burst: the completing hit deals +50% damage. Extra projectiles do not count.','','Completing hit deals +80% damage.','','Completing hit deals +110% damage.']},
+  burstOpening:{name:'Fresh Magazine',icon:'🔄',requiresGun:'burst',desc:['','After completing a reload, your next burst deals +25% damage, including extra projectiles. Weapon switch cancels it.','','Next burst deals +40% damage.','','Next burst deals +55% damage.']},
   ak47Ascension:{name:'Steel Storm',icon:'🌩️',requiresGun:'ak47',desc:['','','','','','Fire 40 primary shots to empower the next 12: damage ×2 and pierce +2, including extra projectiles. Empowered shots cannot recharge it. Reload preserves charge; a 3s firing gap or weapon switch resets it.']},
   ak47Control:{name:'Recoil Control',icon:'🎯',requiresGun:'ak47',desc:['','AK47: 15% less dispersion','AK47: 25% less dispersion','','AK47: 35% less dispersion','AK47: 45% less dispersion']},
   ak47Momentum:{name:'Sustained Fire',icon:'🔥',requiresGun:'ak47',desc:['','Each consecutive primary shot adds 2% damage, up to +20%. Resets on reload or a 0.7s firing gap.','','3% per shot, up to +30%.','','4% per shot, up to +40%.']},
@@ -6882,6 +6891,7 @@ const OVERHEAL_SHIELD_PCT = [0,    0.12, 0.12,  0.24, 0.24, 0.36];
 
 const SKILL_CATEGORY = {
   eventHorizon:'bullet',unstableCollapse:'bullet',persistentSingularity:'bullet',gravityAscension:'bullet',
+  burstControl:'bullet',burstConvergence:'bullet',burstOpening:'bullet',
   ak47Ascension:'bullet',ak47Control:'bullet',ak47Momentum:'bullet',ak47Tactical:'bullet',
   pistolRicochet:'bullet',pistolPrecision:'bullet',pistolLastWord:'bullet',pistolAscension:'bullet',shotgunImpact:'bullet',shotgunRain:'bullet',shotgunFocus:'bullet',shotgunAscension:'bullet',
   spread:'bullet', rapidFire:'bullet', pierce:'bullet', explosive:'bullet',
@@ -6947,6 +6957,7 @@ const RARITY_INFO = {
   divine: {label:'DIVINE ASCENSION', max:1, weight:0.001, color:'#fff1ff'},
 };
 const SKILL_RARITY = {
+  burstControl:'uncommon',burstConvergence:'rare',burstOpening:'rare',
   ak47Ascension:'divine',ak47Control:'uncommon',ak47Momentum:'rare',ak47Tactical:'rare',
   eventHorizon:'uncommon', unstableCollapse:'rare', persistentSingularity:'rare', gravityAscension:'divine',
   pistolRicochet:'uncommon',pistolPrecision:'rare',pistolLastWord:'rare',pistolAscension:'divine',shotgunImpact:'rare',shotgunRain:'uncommon',shotgunFocus:'rare',shotgunAscension:'divine',
@@ -9522,13 +9533,14 @@ function localAttackModifiers(){
     relicDmg:relicDamageMult(),hollowPoint:playerSkills.hollowPoint||0,
     explosive:playerSkills.explosive||0,heavyRounds:playerSkills.heavyRounds||0,
     bounce:playerSkills.bounce||0,longShot:playerSkills.longShot||0,
+    burstConvergence:skillPickLevel('burstConvergence'),
     pistolRicochet:skillPickLevel('pistolRicochet'),pistolPrecision:skillPickLevel('pistolPrecision'),pistolLastWord:skillPickLevel('pistolLastWord'),pistolAscension:!!playerSkills.pistolAscension,shotgunImpact:skillPickLevel('shotgunImpact'),shotgunFocus:skillPickLevel('shotgunFocus'),shotgunAscension:!!playerSkills.shotgunAscension,
     gravityRadius:skillPickLevel('eventHorizon'),gravityCollapse:skillPickLevel('unstableCollapse'),
     gravityPersistence:skillPickLevel('persistentSingularity'),gravityDivine:!!playerSkills.gravityAscension};
 }
 function sendFireMP(x,z,dx,dz,dmg=25,pierce=0,extra=null){
   if(!mp.connected) return;
-  const msg={type:'FIRE',id:mp.myId,x,z,dx,dz,dmg,pierce,gun:player?.gun||'pistol',grenadeTravel:extra?.grenadeTravel||0,gravityTravel:extra?.gravityTravel,gravityCharge:extra?.gravityCharge,delay:extra?.delay||0,pistolShot:!!extra?.pistolShot,pistolPrimary:!!extra?.pistolPrimary,pistolLast:!!extra?.pistolLast,pistolJudgment:!!extra?.pistolJudgment,shotgunSalvo:extra?.shotgunSalvo,rupture:!!extra?.rupture,perm:localAttackModifiers()};
+  const msg={type:'FIRE',id:mp.myId,x,z,dx,dz,dmg,pierce,gun:player?.gun||'pistol',grenadeTravel:extra?.grenadeTravel||0,gravityTravel:extra?.gravityTravel,gravityCharge:extra?.gravityCharge,delay:extra?.delay||0,pistolShot:!!extra?.pistolShot,pistolPrimary:!!extra?.pistolPrimary,pistolLast:!!extra?.pistolLast,pistolJudgment:!!extra?.pistolJudgment,burstSalvo:extra?.burstSalvo,burstIndex:extra?.burstIndex,shotgunSalvo:extra?.shotgunSalvo,rupture:!!extra?.rupture,perm:localAttackModifiers()};
   if(mp.isHost) broadcastMP(JSON.stringify(msg));
   else sendToHost(JSON.stringify(msg));
 }
@@ -10650,6 +10662,7 @@ const CARD_ICON_ALIAS = {
   smg:'burst', cryo:'iceOrb', flamethrower:'fireOrb', sniper:'railgun', rpg:'explosive',
   laser:'railgun', minigun:'grenade', boomerang:'boomerang', gravity:'emoji',
   eventHorizon:'emoji',unstableCollapse:'emoji',persistentSingularity:'emoji',gravityAscension:'emoji',
+  burstControl:'emoji',burstConvergence:'emoji',burstOpening:'emoji',
   ak47Ascension:'emoji',ak47Control:'emoji',ak47Momentum:'emoji',ak47Tactical:'emoji',
   pistolRicochet:'emoji',pistolPrecision:'emoji',pistolLastWord:'emoji',pistolAscension:'emoji',shotgunImpact:'emoji',shotgunRain:'emoji',shotgunFocus:'emoji',shotgunAscension:'emoji',
   katana:'katana', dagger:'dagger', axe:'axe', hook:'hook', samurai:'samurai',
@@ -11416,12 +11429,12 @@ function handleIncomingMP(msg, fromId){
         // Pass msg.gun so the host's local render of this remote shot uses
         // the right bullet visual; the host then re-broadcasts the same
         // msg.gun out to peers.
-        fireBullet({x:msg.x,z:msg.z},_scratchDir.set(msg.dx,0,msg.dz),true,msg.dmg||25,msg.pierce||0,false,msg.perm||null,msg.id,msg.gun||'pistol',{grenadeTravel:msg.grenadeTravel||0,gravityTravel:msg.gravityTravel,gravityCharge:msg.gravityCharge,delay:msg.delay||0,pistolShot:!!msg.pistolShot,pistolPrimary:!!msg.pistolPrimary,pistolLast:!!msg.pistolLast,pistolJudgment:!!msg.pistolJudgment,shotgunSalvo:typeof msg.shotgunSalvo==='string'?msg.shotgunSalvo.slice(0,64):undefined,rupture:!!msg.rupture});
+        fireBullet({x:msg.x,z:msg.z},_scratchDir.set(msg.dx,0,msg.dz),true,msg.dmg||25,msg.pierce||0,false,msg.perm||null,msg.id,msg.gun||'pistol',{grenadeTravel:msg.grenadeTravel||0,gravityTravel:msg.gravityTravel,gravityCharge:msg.gravityCharge,delay:msg.delay||0,pistolShot:!!msg.pistolShot,pistolPrimary:!!msg.pistolPrimary,pistolLast:!!msg.pistolLast,pistolJudgment:!!msg.pistolJudgment,burstSalvo:typeof msg.burstSalvo==='string'?msg.burstSalvo.slice(0,64):undefined,burstIndex:msg.burstIndex,shotgunSalvo:typeof msg.shotgunSalvo==='string'?msg.shotgunSalvo.slice(0,64):undefined,rupture:!!msg.rupture});
         if(!(msg.delay>0)) burst({x:msg.x,z:msg.z},PLAYER_COLORS[msg.id%MAX_PLAYERS].body,isMobile?2:4);
         playRemoteGunSfx(msg.gun||'pistol');
         broadcastMP(JSON.stringify(msg), fromId); // forward to all other clients
       } else if(msg.id !== mp.myId){
-        fireBullet({x:msg.x,z:msg.z},_scratchDir.set(msg.dx,0,msg.dz),true,msg.dmg||25,msg.pierce||0,true,msg.perm||null,msg.id,msg.gun||'pistol',{grenadeTravel:msg.grenadeTravel||0,gravityTravel:msg.gravityTravel,gravityCharge:msg.gravityCharge,delay:msg.delay||0,pistolShot:!!msg.pistolShot,pistolPrimary:!!msg.pistolPrimary,pistolLast:!!msg.pistolLast,pistolJudgment:!!msg.pistolJudgment,shotgunSalvo:typeof msg.shotgunSalvo==='string'?msg.shotgunSalvo.slice(0,64):undefined,rupture:!!msg.rupture});
+        fireBullet({x:msg.x,z:msg.z},_scratchDir.set(msg.dx,0,msg.dz),true,msg.dmg||25,msg.pierce||0,true,msg.perm||null,msg.id,msg.gun||'pistol',{grenadeTravel:msg.grenadeTravel||0,gravityTravel:msg.gravityTravel,gravityCharge:msg.gravityCharge,delay:msg.delay||0,pistolShot:!!msg.pistolShot,pistolPrimary:!!msg.pistolPrimary,pistolLast:!!msg.pistolLast,pistolJudgment:!!msg.pistolJudgment,burstSalvo:typeof msg.burstSalvo==='string'?msg.burstSalvo.slice(0,64):undefined,burstIndex:msg.burstIndex,shotgunSalvo:typeof msg.shotgunSalvo==='string'?msg.shotgunSalvo.slice(0,64):undefined,rupture:!!msg.rupture});
         if(!(msg.delay>0)) burst({x:msg.x,z:msg.z},PLAYER_COLORS[msg.id%MAX_PLAYERS].body,isMobile?2:4);
         playRemoteGunSfx(msg.gun||'pistol');
       }
@@ -11603,6 +11616,7 @@ function startAsClient(spawnPos,mapLayout=0){
   ruptureCharge.reset();
   ak47Rhythm.reset();
   steelStorm.reset();
+  burstSalvos.reset();burstOpening.reset();
   runScore.begin();
   // Clear any stale input state from the previous run. If the player held LMB
   // or a movement key when game-over fired, the corresponding browser
@@ -14307,6 +14321,7 @@ function initGame(){
   ruptureCharge.reset();
   ak47Rhythm.reset();
   steelStorm.reset();
+  burstSalvos.reset();burstOpening.reset();
   runScore.begin();
   // See startAsClient for why: stale mouse/key state from the previous run
   // can lock firing or trigger movement on respawn.
@@ -16217,6 +16232,7 @@ function updateLinkerVisuals(){
   linkerBeams.visible=count>0&&gState==='playing';
 }
 function update(dt){
+  if(player.gun!=='burst')burstOpening.reset();
   ak47Rhythm.tick(dt,player.gun==='ak47',player.reloadT>0);
   steelStorm.tick(dt,player.gun==='ak47'&&!!playerSkills.ak47Ascension);
   player.gravityExhaustion=Math.max(0,(player.gravityExhaustion||0)-dt);
@@ -16442,7 +16458,7 @@ function update(dt){
     // so the reload state advances even if the player isn't holding fire.
     if(player.reloadT>0){
       player.reloadT=Math.max(0,player.reloadT-dt);
-      if(player.reloadT<=0){ player.ammo=currentMagSize(); if(player.gun==='pistol'&&playerSkills.pistolAscension)pistolJudgment.reload(player.ammo); sReloadEnd(); }
+      if(player.reloadT<=0){ player.ammo=currentMagSize(); if(player.gun==='burst')burstOpening.reload(); if(player.gun==='pistol'&&playerSkills.pistolAscension)pistolJudgment.reload(player.ammo); sReloadEnd(); }
     }
     const rfMult=([1,0.85,0.72,0.60,0.50,0.40][playerSkills.rapidFire||0])||1;
     const fireRateMult=PERM_CD_MULT[persistData.upgrades.fireRate||0]||1;
@@ -16519,10 +16535,12 @@ function update(dt){
     while(!gravityHandled&&activeGun.id!=='railgun'&&wantFire&&player.fireCd<=0&&player.reloadT<=0&&player.ammo>0&&primaryCatchupShots<PRIMARY_FIRE_CATCHUP_MAX){
       primaryCatchupShots++;
       const gun=activeGun;
+      const burstOpts=gun.id==='burst'?{burstSalvo:runGeneration+':'+(++burstSequence)}:null;
+      const burstDamage=burstOpts?burstOpening.fire(skillPickLevel('burstOpening')):1;
       const stormShot=gun.id==='ak47'&&playerSkills.ak47Ascension&&steelStorm.shot();
       const rifleDamage=gun.id==='ak47'?ak47Rhythm.shot(skillPickLevel('ak47Momentum'))*(stormShot?2:1):1;
       const shotgunOpts=gun.id==='shotgun'?{shotgunSalvo:runGeneration+':'+(++shotgunSequence)}:null;
-      const pattern=gun.id==='shotgun'?shotgunPattern(skillPickLevel('shotgunRain')):{pellets:gun.bulletsPerShot,spread:gun.id==='ak47'?ak47Spread(skillPickLevel('ak47Control')):gun.spread};
+      const pattern=gun.id==='shotgun'?shotgunPattern(skillPickLevel('shotgunRain')):{pellets:gun.bulletsPerShot,spread:gun.id==='ak47'?ak47Spread(skillPickLevel('ak47Control')):gun.id==='burst'?burstSpread(skillPickLevel('burstControl')):gun.spread};
       const pistolOpts=gun.id==='pistol'?{pistolShot:true,pistolPrimary:true,pistolJudgment:!!playerSkills.pistolAscension&&pistolJudgment.fire(),pistolLast:player.ammo===1&&!hasRelic('infiniteMag')}:null;
       if(!hasRelic('infiniteMag')){
         player.ammo--;
@@ -16554,7 +16572,7 @@ function update(dt){
       if(Math.hypot(fx,fz)>0.1){
         // Crystal Force scales every bullet; gun.dmgMult is per-pellet so
         // shotguns deal small per-pellet damage but stack via 12 pellets.
-        const pdmgBase=playerStats.attackDmg*BULLET_PWR_MULT[playerSkills.bulletPower||0]*crystalPowerMult()*gun.dmgMult*rifleDamage;
+        const pdmgBase=playerStats.attackDmg*BULLET_PWR_MULT[playerSkills.bulletPower||0]*crystalPowerMult()*gun.dmgMult*rifleDamage*burstDamage;
         const pdmg=Math.max(1,Math.round(pdmgBase));
         if(shotgunOpts&&playerSkills.shotgunAscension&&ruptureCharge.fire()){
           shotgunOpts.rupture=true;
@@ -16592,7 +16610,7 @@ function update(dt){
           const rowDelay=shotgunRow ? 0.055 : 0;
           const muzzleDist=gun.id==='shotgun' ? (shotgunRow ? 0.78 : 0.96) : 0.95;
           const sbx=player.pos.x+sx*muzzleDist, sbz=player.pos.z+sz*muzzleDist;
-          const bulletOpts=gun.kind==='gravity' ? {gravityTravel:gravityAimTravel(gun,sbx,sbz)} : gun.kind==='grenade' ? {grenadeTravel:grenadeAimTravel(gun,sbx,sbz)} : pistolOpts || (shotgunOpts ? {...shotgunOpts,delay:rowDelay} : null);
+          const bulletOpts=gun.kind==='gravity' ? {gravityTravel:gravityAimTravel(gun,sbx,sbz)} : gun.kind==='grenade' ? {grenadeTravel:grenadeAimTravel(gun,sbx,sbz)} : pistolOpts || (burstOpts?{...burstOpts,burstIndex:pelletI}:null) || (shotgunOpts ? {...shotgunOpts,delay:rowDelay} : null);
           const slot=fireBullet({x:sbx,z:sbz},_scratchDir.set(sx,0,sz),true,pdmg,pierceLvl,false,null,mp.myId,null,bulletOpts);
           // Shotgun pellets carry per-bullet falloff. Origin is the muzzle
           // position; at hit time the bullet code scales damage by how far
@@ -17608,7 +17626,8 @@ function update(dt){
             else if(mp.isHost){const conn=mp.conns.get(b.ownerId);if(conn?.open)conn.send(JSON.stringify({type:'RUPTURE_CHARGE',targetId:b.ownerId}));}
           }
           const shotgunHit=shotgunSalvos.hit(b.shotgunSalvo,e,b.ownerPerm?.shotgunFocus,b.ownerPerm?.shotgunImpact,Math.hypot(b.pos.x-b.fallOX,b.pos.z-b.fallOZ)<=3);
-          const hitDmg=playerDamageAmount(e,Math.max(1,Math.round(_bDmgAdj*shotgunHit.damage)),b.ownerPerm);
+          const burstMult=burstSalvos.hit(b.burstSalvo,e,b.burstIndex,b.ownerPerm?.burstConvergence);
+          const hitDmg=playerDamageAmount(e,Math.max(1,Math.round(_bDmgAdj*shotgunHit.damage*burstMult)),b.ownerPerm);
           if(shotgunHit.stagger){
             addEnemyStagger(e,shotgunHit.stagger);
             const distance=shotgunHit.push*enemyControlFactor(e),steps=Math.ceil(distance/.1);
